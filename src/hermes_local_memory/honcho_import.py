@@ -50,19 +50,29 @@ def plan_honcho_export_import(
     *,
     target_db: str | Path,
     limit_preview: int = 25,
+    identity_map: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a read-only import plan from the stable Honcho API export format."""
 
     source = dict(export.get("source", {}))
     workspace = str(source.get("workspace") or "")
-    peers = [_peer_from_export(row, workspace) for row in export.get("peers", [])]
+    identity = _normalize_identity_map(identity_map)
+    source_peers = [
+        _peer_from_export(row, workspace, identity) for row in export.get("peers", [])
+    ]
+    peers = _dedupe_by_id(source_peers)
     sessions = [_session_from_export(row, workspace) for row in export.get("sessions", [])]
     session_peers = [
-        _session_peer_from_export(row) for row in export.get("session_peers", [])
+        _session_peer_from_export(row, identity) for row in export.get("session_peers", [])
     ]
-    messages = [_message_from_export(row, workspace) for row in export.get("messages", [])]
-    cards = [_card_from_export(row) for row in export.get("cards", [])]
-    facts = [_conclusion_from_export(row, workspace) for row in export.get("conclusions", [])]
+    messages = [
+        _message_from_export(row, workspace, identity) for row in export.get("messages", [])
+    ]
+    cards = [_card_from_export(row, identity) for row in export.get("cards", [])]
+    facts = [
+        _conclusion_from_export(row, workspace, identity)
+        for row in export.get("conclusions", [])
+    ]
     warnings = []
     if export.get("format") != "hermes-local-memory.honcho-export.v1":
         warnings.append("unrecognized Honcho export format")
@@ -77,6 +87,7 @@ def plan_honcho_export_import(
         facts=facts,
         warnings=warnings,
         limit_preview=limit_preview,
+        source_peers=source_peers,
     )
 
 
@@ -92,8 +103,10 @@ def _build_plan(
     facts: list[dict[str, Any]],
     warnings: list[str],
     limit_preview: int,
+    source_peers: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     target_path = Path(target_db).expanduser()
+    source_peers = source_peers or peers
     aliases = [
         {
             "alias": f"honcho:{peer['source_name']}",
@@ -102,7 +115,7 @@ def _build_plan(
             "confidence": 1.0,
             "verified": False,
         }
-        for peer in peers
+        for peer in source_peers
     ]
     counts = {
         "peers": len(peers),
@@ -277,14 +290,74 @@ def _upsert_session_peer(store: LocalMemoryStore, item: dict[str, Any]) -> None:
         )
 
 
-def _peer_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
+def load_identity_map(path: str | Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    data = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    return _normalize_identity_map(data)
+
+
+def _normalize_identity_map(identity_map: dict[str, Any] | None) -> dict[str, Any]:
+    if not identity_map:
+        return {"peers": {}, "patterns": {}, "display_names": {}, "kinds": {}}
+    peers = identity_map.get("peers") or {}
+    patterns = identity_map.get("patterns") or {}
+    display_names = identity_map.get("display_names") or {}
+    kinds = identity_map.get("kinds") or {}
+    if (
+        not isinstance(peers, dict)
+        or not isinstance(patterns, dict)
+        or not isinstance(display_names, dict)
+        or not isinstance(kinds, dict)
+    ):
+        raise ValueError(
+            "identity map must contain object values for peers/patterns/display_names/kinds"
+        )
+    return {
+        "peers": {str(key): str(value) for key, value in peers.items()},
+        "patterns": {str(key): str(value) for key, value in patterns.items()},
+        "display_names": {str(key): str(value) for key, value in display_names.items()},
+        "kinds": {str(key): str(value) for key, value in kinds.items()},
+    }
+
+
+def _map_peer_id(source_name: str, identity_map: dict[str, Any]) -> str:
+    alias = f"honcho:{source_name}"
+    explicit = identity_map["peers"].get(alias)
+    if explicit:
+        return explicit
+    for pattern, target in identity_map["patterns"].items():
+        if _matches_pattern(alias, pattern):
+            return target
+    return _local_peer_id(source_name)
+
+
+def _matches_pattern(value: str, pattern: str) -> bool:
+    if pattern.endswith("*"):
+        return value.startswith(pattern[:-1])
+    return value == pattern
+
+
+def _dedupe_by_id(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        result.setdefault(row["id"], row)
+    return list(result.values())
+
+
+def _peer_from_export(
+    row: dict[str, Any],
+    workspace: str,
+    identity_map: dict[str, Any],
+) -> dict[str, Any]:
     source_name = _source_id(row)
     metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    peer_id = _map_peer_id(source_name, identity_map)
     return {
-        "id": _local_peer_id(source_name),
+        "id": peer_id,
         "source_name": source_name,
-        "display_name": source_name,
-        "kind": _peer_kind(source_name, metadata),
+        "display_name": identity_map["display_names"].get(peer_id, source_name),
+        "kind": identity_map["kinds"].get(peer_id, _peer_kind(source_name, metadata)),
         "metadata": {
             "source": "honcho-api",
             "honcho_workspace": workspace,
@@ -314,24 +387,28 @@ def _session_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
     }
 
 
-def _session_peer_from_export(row: dict[str, Any]) -> dict[str, Any]:
+def _session_peer_from_export(row: dict[str, Any], identity_map: dict[str, Any]) -> dict[str, Any]:
     peer_name = str(row.get("peer_id") or row.get("id") or "unknown")
     return {
         "session_id": _local_session_id(str(row.get("session_id") or "unknown")),
-        "peer_id": _local_peer_id(peer_name),
+        "peer_id": _map_peer_id(peer_name, identity_map),
         "role": "assistant" if _looks_like_assistant(peer_name) else "participant",
         "left_at": row.get("left_at"),
     }
 
 
-def _message_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
+def _message_from_export(
+    row: dict[str, Any],
+    workspace: str,
+    identity_map: dict[str, Any],
+) -> dict[str, Any]:
     message_id = _source_id(row)
     peer_name = str(row.get("peer_id") or row.get("peer_name") or "unknown")
     session_name = str(row.get("session_id") or row.get("session_name") or "unknown")
     metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
     return {
         "session_id": _local_session_id(session_name),
-        "peer_id": _local_peer_id(peer_name),
+        "peer_id": _map_peer_id(peer_name, identity_map),
         "role": "assistant" if _looks_like_assistant(peer_name) else "user",
         "content": str(row.get("content") or ""),
         "source_message_id": f"honcho-api:{message_id}",
@@ -347,10 +424,12 @@ def _message_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
     }
 
 
-def _card_from_export(row: dict[str, Any]) -> dict[str, Any]:
+def _card_from_export(row: dict[str, Any], identity_map: dict[str, Any]) -> dict[str, Any]:
+    target = str(row.get("target_id") or "unknown")
+    observer = str(row.get("observer_id") or "unknown")
     return {
-        "subject_peer_id": _local_peer_id(str(row.get("target_id") or "unknown")),
-        "observer_peer_id": _local_peer_id(str(row.get("observer_id") or "unknown")),
+        "subject_peer_id": _map_peer_id(target, identity_map),
+        "observer_peer_id": _map_peer_id(observer, identity_map),
         "scope": "global",
         "scope_id": "",
         "items": row.get("peer_card") if isinstance(row.get("peer_card"), list) else [],
@@ -358,14 +437,18 @@ def _card_from_export(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _conclusion_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
+def _conclusion_from_export(
+    row: dict[str, Any],
+    workspace: str,
+    identity_map: dict[str, Any],
+) -> dict[str, Any]:
     conclusion_id = _source_id(row)
     observed = str(row.get("observed_id") or row.get("observed") or "unknown")
     observer = str(row.get("observer_id") or row.get("observer") or "unknown")
     return {
         "id": f"honcho-api-conclusion-{conclusion_id}",
-        "subject_peer_id": _local_peer_id(observed),
-        "observer_peer_id": _local_peer_id(observer),
+        "subject_peer_id": _map_peer_id(observed, identity_map),
+        "observer_peer_id": _map_peer_id(observer, identity_map),
         "kind": "conclusion",
         "content": str(row.get("content") or ""),
         "confidence": 0.7,

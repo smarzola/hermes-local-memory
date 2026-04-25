@@ -6,7 +6,11 @@ from urllib.parse import parse_qs, urlparse
 
 from hermes_local_memory.cli import main
 from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
-from hermes_local_memory.honcho_import import apply_honcho_import_plan, plan_honcho_export_import
+from hermes_local_memory.honcho_import import (
+    apply_honcho_import_plan,
+    load_identity_map,
+    plan_honcho_export_import,
+)
 from hermes_local_memory.store import LocalMemoryStore
 
 
@@ -34,6 +38,7 @@ class FakeHonchoTransport:
                 [
                     {"id": "Ambrogio", "metadata": {"kind": "ai"}},
                     {"id": "151011988", "metadata": {"telegram_user_id": "151011988"}},
+                    {"id": "user-default-20260419_182008_26ad7f", "metadata": {}},
                 ],
                 page=page,
                 size=size,
@@ -81,11 +86,15 @@ class FakeHonchoTransport:
         if path == "/v3/workspaces/hermes/peers/Ambrogio/card":
             if query.get("target") == ["151011988"]:
                 return {"peer_card": ["Simone prefers local-first memory."]}
+            if "target" in query:
+                return {"peer_card": None}
             return {"peer_card": ["Assistant name: Ambrogio"]}
         if path == "/v3/workspaces/hermes/peers/151011988/card":
             if "target" in query:
                 return {"peer_card": None}
             return {"peer_card": ["Name: Simone"]}
+        if path == "/v3/workspaces/hermes/peers/user-default-20260419_182008_26ad7f/card":
+            return {"peer_card": None}
         if path == "/v3/workspaces/hermes/conclusions/list":
             return _page(
                 [
@@ -121,7 +130,7 @@ def test_honcho_api_export_uses_public_endpoints_and_auth_header() -> None:
     assert export["format"] == "hermes-local-memory.honcho-export.v1"
     assert export["source"]["kind"] == "honcho-api"
     assert export["source"]["workspace"] == "hermes"
-    assert len(export["peers"]) == 2
+    assert len(export["peers"]) == 3
     assert len(export["sessions"]) == 1
     assert len(export["session_peers"]) == 2
     assert len(export["messages"]) == 2
@@ -145,8 +154,8 @@ def test_plan_honcho_export_import_from_api_export_does_not_write(tmp_path: Path
     assert plan["mode"] == "dry-run"
     assert plan["source"]["kind"] == "honcho-api"
     assert plan["counts"] == {
-        "peers": 2,
-        "aliases": 2,
+        "peers": 3,
+        "aliases": 3,
         "sessions": 1,
         "session_peers": 2,
         "messages": 2,
@@ -155,9 +164,67 @@ def test_plan_honcho_export_import_from_api_export_does_not_write(tmp_path: Path
     }
     assert plan["writes"] == []
     assert not target_db.exists()
-    assert {peer["id"] for peer in plan["peers"]} == {"honcho-151011988", "honcho-ambrogio"}
+    assert {peer["id"] for peer in plan["peers"]} == {
+        "honcho-151011988",
+        "honcho-ambrogio",
+        "honcho-user-default-20260419_182008_26ad7f",
+    }
     assert plan["messages"][0]["source_message_id"] == "honcho-api:msg-user-1"
     assert plan["facts"][0]["status"] == "candidate"
+
+
+def test_identity_map_merges_honcho_peers_and_preserves_aliases(tmp_path: Path) -> None:
+    client = HonchoApiClient("https://honcho.example/v3", transport=FakeHonchoTransport())
+    export = export_honcho_api(client, workspace="hermes")
+    identity_map = {
+        "peers": {
+            "honcho:151011988": "simone",
+            "honcho:Ambrogio": "ambrogio",
+        },
+        "patterns": {
+            "honcho:user-default*": "simone"
+        },
+        "display_names": {"simone": "Simone", "ambrogio": "Ambrogio"},
+        "kinds": {"simone": "human", "ambrogio": "ai"},
+    }
+
+    plan = plan_honcho_export_import(
+        export,
+        target_db=tmp_path / "local.sqlite",
+        identity_map=identity_map,
+    )
+
+    assert plan["counts"]["peers"] == 2
+    assert {peer["id"] for peer in plan["peers"]} == {"simone", "ambrogio"}
+    assert {alias["alias"] for alias in plan["aliases"]} == {
+        "honcho:151011988",
+        "honcho:Ambrogio",
+        "honcho:user-default-20260419_182008_26ad7f",
+    }
+    assert all(message["peer_id"] in {"simone", "ambrogio"} for message in plan["messages"])
+    assert {card["subject_peer_id"] for card in plan["cards"]} == {"simone", "ambrogio"}
+    assert plan["facts"][0]["subject_peer_id"] == "simone"
+
+
+def test_load_identity_map_accepts_json_file(tmp_path: Path) -> None:
+    path = tmp_path / "identity-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "peers": {"honcho:151011988": "simone"},
+                "display_names": {"simone": "Simone"},
+                "kinds": {"simone": "human"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_identity_map(path)
+
+    assert loaded["peers"] == {"honcho:151011988": "simone"}
+    assert loaded["patterns"] == {}
+    assert loaded["display_names"] == {"simone": "Simone"}
+    assert loaded["kinds"] == {"simone": "human"}
 
 
 def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> None:
@@ -183,8 +250,8 @@ def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> 
     assert first["mode"] == "apply"
     assert first["backup_path"] is None
     assert first["writes"] == {
-        "peers_upserted": 2,
-        "aliases_upserted": 2,
+        "peers_upserted": 3,
+        "aliases_upserted": 3,
         "sessions_upserted": 1,
         "session_peers_upserted": 2,
         "messages_inserted": 30,
@@ -201,12 +268,31 @@ def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> 
     assert second["writes"]["facts_skipped_existing"] == 1
 
     store = LocalMemoryStore(target_db)
-    assert len(store.list_peers()) == 2
-    assert len(store.list_aliases()) == 2
+    assert len(store.list_peers()) == 3
+    assert len(store.list_aliases()) == 3
     assert len(store.list_sessions()) == 1
     assert len(store.list_messages(limit=100)) == 30
     assert len(store.list_cards(limit=10)) == 3
     assert len(store.list_facts(status="candidate", limit=10)) == 1
+
+
+def _write_identity_map(tmp_path: Path) -> Path:
+    path = tmp_path / "identity-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "peers": {
+                    "honcho:151011988": "simone",
+                    "honcho:Ambrogio": "ambrogio",
+                },
+                "patterns": {"honcho:user-default*": "simone"},
+                "display_names": {"simone": "Simone", "ambrogio": "Ambrogio"},
+                "kinds": {"simone": "human", "ambrogio": "ai"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_honcho_api_import_cli_dry_run_prints_json_without_writing(
@@ -236,6 +322,8 @@ def test_honcho_api_import_cli_dry_run_prints_json_without_writing(
             "hermes",
             "--api-key",
             "secret",
+            "--identity-map",
+            str(_write_identity_map(tmp_path)),
             "--dry-run",
             "--json",
         ]
@@ -244,7 +332,9 @@ def test_honcho_api_import_cli_dry_run_prints_json_without_writing(
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["source"]["kind"] == "honcho-api"
+    assert output["counts"]["peers"] == 2
     assert output["counts"]["messages"] == 2
+    assert {peer["id"] for peer in output["peers"]} == {"simone", "ambrogio"}
     assert not target_db.exists()
 
 

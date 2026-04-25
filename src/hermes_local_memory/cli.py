@@ -9,6 +9,7 @@ from hermes_local_memory.hermes_plugin import write_plugin_shim
 from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
 from hermes_local_memory.honcho_import import (
     apply_honcho_import_plan,
+    load_identity_map,
     plan_honcho_export_import,
     plan_honcho_import,
 )
@@ -120,6 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
     honcho_api.add_argument("--workspace", default="hermes", help="Workspace name, default: hermes")
     honcho_api.add_argument("--api-key", help="Honcho API key/token")
     honcho_api.add_argument("--page-size", type=int, default=100, help="API page size")
+    honcho_api.add_argument("--identity-map", help="Optional JSON peer identity map")
     mode = honcho_api.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Plan only; do not write anything")
     mode.add_argument("--apply", action="store_true", help="Apply the import plan to the local DB")
@@ -176,7 +178,12 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("Specify exactly one of --dry-run or --apply")
         client = HonchoApiClient(args.base_url, api_key=args.api_key)
         export = export_honcho_api(client, workspace=args.workspace, page_size=args.page_size)
-        plan = plan_honcho_export_import(export, target_db=Path(args.db).expanduser())
+        identity_map = load_identity_map(args.identity_map)
+        plan = plan_honcho_export_import(
+            export,
+            target_db=Path(args.db).expanduser(),
+            identity_map=identity_map,
+        )
         result = apply_honcho_import_plan(plan, backup=not args.no_backup) if args.apply else plan
         _print_plan(result, as_json=args.json)
         return 0
