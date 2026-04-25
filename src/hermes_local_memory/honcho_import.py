@@ -68,7 +68,9 @@ def plan_honcho_export_import(
     messages = [
         _message_from_export(row, workspace, identity) for row in export.get("messages", [])
     ]
-    cards = [_card_from_export(row, identity) for row in export.get("cards", [])]
+    cards = _merge_cards(
+        [_card_from_export(row, identity) for row in export.get("cards", [])]
+    )
     facts = [
         _conclusion_from_export(row, workspace, identity)
         for row in export.get("conclusions", [])
@@ -296,6 +298,26 @@ def load_identity_map(path: str | Path | None) -> dict[str, Any] | None:
     data = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
     return _normalize_identity_map(data)
 
+
+def _merge_cards(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (
+            row["subject_peer_id"],
+            row["observer_peer_id"],
+            row.get("scope") or "global",
+            row.get("scope_id") or "",
+        )
+        existing = result.get(key)
+        if existing is None:
+            result[key] = {**row, "items": list(row.get("items") or [])}
+            continue
+        seen = set(existing.get("items") or [])
+        for item in row.get("items") or []:
+            if item not in seen:
+                existing.setdefault("items", []).append(item)
+                seen.add(item)
+    return list(result.values())
 
 def _normalize_identity_map(identity_map: dict[str, Any] | None) -> dict[str, Any]:
     if not identity_map:

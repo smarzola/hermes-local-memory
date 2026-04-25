@@ -206,6 +206,59 @@ def test_identity_map_merges_honcho_peers_and_preserves_aliases(tmp_path: Path) 
     assert plan["facts"][0]["subject_peer_id"] == "simone"
 
 
+def test_identity_map_merges_duplicate_cards_in_plan(tmp_path: Path) -> None:
+    export = {
+        "format": "hermes-local-memory.honcho-export.v1",
+        "source": {"kind": "honcho-api", "workspace": "hermes"},
+        "peers": [
+            {"id": "151011988", "metadata": {}},
+            {"id": "Simone", "metadata": {}},
+            {"id": "Ambrogio", "metadata": {"kind": "ai"}},
+        ],
+        "sessions": [],
+        "session_peers": [],
+        "messages": [],
+        "cards": [
+            {
+                "target_id": "151011988",
+                "observer_id": "Ambrogio",
+                "peer_card": ["Name: Simone", "Prefers local memory"],
+            },
+            {
+                "target_id": "Simone",
+                "observer_id": "Ambrogio",
+                "peer_card": ["Name: Simone", "Lives in Stockholm"],
+            },
+        ],
+        "conclusions": [],
+    }
+    identity_map = {
+        "peers": {
+            "honcho:151011988": "simone",
+            "honcho:Simone": "simone",
+            "honcho:Ambrogio": "ambrogio",
+        }
+    }
+
+    plan = plan_honcho_export_import(
+        export,
+        target_db=tmp_path / "local.sqlite",
+        identity_map=identity_map,
+    )
+
+    assert plan["counts"]["cards"] == 1
+    assert plan["cards"] == [
+        {
+            "subject_peer_id": "simone",
+            "observer_peer_id": "ambrogio",
+            "scope": "global",
+            "scope_id": "",
+            "items": ["Name: Simone", "Prefers local memory", "Lives in Stockholm"],
+            "source": "honcho-api-card",
+        }
+    ]
+
+
 def test_load_identity_map_accepts_json_file(tmp_path: Path) -> None:
     path = tmp_path / "identity-map.json"
     path.write_text(
