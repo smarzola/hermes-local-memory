@@ -22,15 +22,21 @@ This project is an open-source, boring-engineering replacement for server-shaped
 - No hidden dialectic/dream worker as the core behavior.
 - No destructive migration that treats old history as expendable.
 
-## Planned surfaces
+## Current surfaces
 
-The Hermes provider will expose tools equivalent to:
+The package now includes a Hermes-compatible `LocalMemoryProvider` with these tools:
 
 - `memory_profile` — read/write compact peer cards.
-- `memory_search` — search facts, summaries, and raw messages.
+- `memory_search` — search durable facts.
 - `memory_context` — show exactly what would be injected.
-- `memory_conclude` — add/replace/retract durable facts.
+- `memory_conclude` — add durable facts with evidence links to the most recent synced user turn.
+
+The provider is intentionally independently testable and does not import Hermes. A thin Hermes plugin shim can wrap this class from `$HERMES_HOME/plugins/local_memory/` or upstream Hermes later.
+
+Planned next surfaces:
+
 - `memory_consolidate` — optional preview/apply consolidation jobs.
+- Honcho importer — preserve raw history and migrate cards/documents into local facts/candidates.
 
 ## Development
 
@@ -48,11 +54,12 @@ pytest
 ```text
 src/hermes_local_memory/
   __init__.py       Public package exports
+  provider.py       Hermes-compatible provider lifecycle and tools
   store.py          SQLite store and deterministic retrieval core
   schema.py         Schema migrations
-  types.py          TypedDict/public data shapes
 
 tests/
+  test_provider.py  Provider lifecycle/tool behavior tests
   test_store.py     Store behavior tests
 ```
 
