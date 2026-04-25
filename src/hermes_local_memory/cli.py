@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from hermes_local_memory.hermes_plugin import write_plugin_shim
-from hermes_local_memory.honcho_import import plan_honcho_import
+from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
+from hermes_local_memory.honcho_import import plan_honcho_export_import, plan_honcho_import
 from hermes_local_memory.store import LocalMemoryStore
 
 
@@ -107,7 +108,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     import_cmd = sub.add_parser("import", help="Plan or apply imports from other memory systems")
     import_sub = import_cmd.add_subparsers(dest="import_command", required=True)
-    honcho = import_sub.add_parser("honcho", help="Plan a safe Honcho import")
+    honcho_api = import_sub.add_parser(
+        "honcho-api",
+        help="Plan a safe Honcho import through the public HTTP API",
+    )
+    honcho_api.add_argument("--base-url", required=True, help="Honcho API base URL")
+    honcho_api.add_argument("--workspace", default="hermes", help="Workspace name, default: hermes")
+    honcho_api.add_argument("--api-key", help="Honcho API key/token")
+    honcho_api.add_argument("--page-size", type=int, default=100, help="API page size")
+    honcho_api.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Required for now; do not write anything",
+    )
+    honcho_api.add_argument("--json", action="store_true", help="Print JSON")
+
+    honcho = import_sub.add_parser(
+        "honcho",
+        help="Plan a safe Honcho import from a SQLite DB fixture/export",
+    )
     honcho.add_argument(
         "--source-db",
         required=True,
@@ -145,9 +164,18 @@ def main(argv: list[str] | None = None) -> int:
         print(shim)
         return 0
 
+    if args.command == "import" and args.import_command == "honcho-api":
+        if not args.dry_run:
+            raise ValueError("Honcho API import currently supports --dry-run only")
+        client = HonchoApiClient(args.base_url, api_key=args.api_key)
+        export = export_honcho_api(client, workspace=args.workspace, page_size=args.page_size)
+        plan = plan_honcho_export_import(export, target_db=Path(args.db).expanduser())
+        _print_plan(plan, as_json=args.json)
+        return 0
+
     if args.command == "import" and args.import_command == "honcho":
         if not args.dry_run:
-            raise ValueError("Honcho import currently supports --dry-run only")
+            raise ValueError("Honcho SQLite import currently supports --dry-run only")
         plan = plan_honcho_import(
             Path(args.source_db).expanduser(),
             target_db=Path(args.db).expanduser(),

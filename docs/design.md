@@ -350,17 +350,18 @@ Repair commands are now explicit and auditable for alias mapping, fact add/retra
 
 Partially done:
 
-- dry-run planner from Honcho-shaped SQLite exports/fixtures
+- preferred dry-run planner through Honcho's HTTP API
+- fallback dry-run planner from Honcho-shaped SQLite exports/fixtures
 - proposed peer/session/message/card/fact counts
 - `honcho:<peer>` alias planning
 - raw-message preservation plan with source IDs and metadata
-- peer-card planning from `peers.internal_metadata`
-- Honcho documents planned as `candidate` facts
+- peer-card planning from the peer-card API or SQLite `peers.internal_metadata`
+- Honcho conclusions/documents planned as `candidate` facts
 
 Still planned:
 
 - apply mode
-- direct Postgres ingestion
+- optional advanced forensic DB import/export paths if API export misses data
 - identity map file support
 - richer collision detection and warnings
 

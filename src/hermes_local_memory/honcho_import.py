@@ -14,15 +14,9 @@ def plan_honcho_import(
     workspace: str = "hermes",
     limit_preview: int = 25,
 ) -> dict[str, Any]:
-    """Build a read-only import plan from a Honcho-like SQLite export.
-
-    This intentionally does not write to the target DB. It is the safety-first
-    precursor to a future --apply command and is designed to work against
-    deterministic fixtures as well as SQLite exports of Honcho tables.
-    """
+    """Build a read-only import plan from a Honcho-like SQLite export."""
 
     source_path = Path(source_db).expanduser()
-    target_path = Path(target_db).expanduser()
     with sqlite3.connect(source_path) as conn:
         conn.row_factory = sqlite3.Row
         tables = _table_names(conn)
@@ -33,6 +27,69 @@ def plan_honcho_import(
         cards = _read_cards(peers)
         facts = _read_documents_as_candidate_facts(conn, tables, workspace)
 
+    return _build_plan(
+        source={"kind": "honcho-sqlite", "db_path": str(source_path), "workspace": workspace},
+        target_db=target_db,
+        peers=peers,
+        sessions=sessions,
+        session_peers=session_peers,
+        messages=messages,
+        cards=cards,
+        facts=facts,
+        warnings=_build_warnings(tables),
+        limit_preview=limit_preview,
+    )
+
+
+def plan_honcho_export_import(
+    export: dict[str, Any],
+    *,
+    target_db: str | Path,
+    limit_preview: int = 25,
+) -> dict[str, Any]:
+    """Build a read-only import plan from the stable Honcho API export format."""
+
+    source = dict(export.get("source", {}))
+    workspace = str(source.get("workspace") or "")
+    peers = [_peer_from_export(row, workspace) for row in export.get("peers", [])]
+    sessions = [_session_from_export(row, workspace) for row in export.get("sessions", [])]
+    session_peers = [
+        _session_peer_from_export(row) for row in export.get("session_peers", [])
+    ]
+    messages = [_message_from_export(row, workspace) for row in export.get("messages", [])]
+    cards = [_card_from_export(row) for row in export.get("cards", [])]
+    facts = [_conclusion_from_export(row, workspace) for row in export.get("conclusions", [])]
+    warnings = []
+    if export.get("format") != "hermes-local-memory.honcho-export.v1":
+        warnings.append("unrecognized Honcho export format")
+    return _build_plan(
+        source=source,
+        target_db=target_db,
+        peers=peers,
+        sessions=sessions,
+        session_peers=session_peers,
+        messages=messages,
+        cards=cards,
+        facts=facts,
+        warnings=warnings,
+        limit_preview=limit_preview,
+    )
+
+
+def _build_plan(
+    *,
+    source: dict[str, Any],
+    target_db: str | Path,
+    peers: list[dict[str, Any]],
+    sessions: list[dict[str, Any]],
+    session_peers: list[dict[str, Any]],
+    messages: list[dict[str, Any]],
+    cards: list[dict[str, Any]],
+    facts: list[dict[str, Any]],
+    warnings: list[str],
+    limit_preview: int,
+) -> dict[str, Any]:
+    target_path = Path(target_db).expanduser()
     aliases = [
         {
             "alias": f"honcho:{peer['source_name']}",
@@ -43,7 +100,6 @@ def plan_honcho_import(
         }
         for peer in peers
     ]
-    warnings = _build_warnings(tables)
     counts = {
         "peers": len(peers),
         "aliases": len(aliases),
@@ -55,7 +111,7 @@ def plan_honcho_import(
     }
     return {
         "mode": "dry-run",
-        "source": {"kind": "honcho-sqlite", "db_path": str(source_path), "workspace": workspace},
+        "source": source,
         "target": {"kind": "local-memory-sqlite", "db_path": str(target_path)},
         "counts": counts,
         "warnings": warnings,
@@ -68,6 +124,114 @@ def plan_honcho_import(
         "cards": cards[:limit_preview],
         "facts": facts[:limit_preview],
     }
+
+
+def _peer_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
+    source_name = _source_id(row)
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    return {
+        "id": _local_peer_id(source_name),
+        "source_name": source_name,
+        "display_name": source_name,
+        "kind": _peer_kind(source_name, metadata),
+        "metadata": {
+            "source": "honcho-api",
+            "honcho_workspace": workspace,
+            "honcho_peer_name": source_name,
+            "honcho_metadata": metadata,
+        },
+    }
+
+
+def _session_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
+    source_name = _source_id(row)
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    return {
+        "id": _local_session_id(source_name),
+        "source_name": source_name,
+        "profile_id": workspace,
+        "platform": _infer_platform(source_name, metadata),
+        "external_id": _infer_external_id(source_name, metadata),
+        "title": metadata.get("title") if isinstance(metadata, dict) else None,
+        "scope": "private",
+        "metadata": {
+            "source": "honcho-api",
+            "honcho_workspace": workspace,
+            "honcho_session_name": source_name,
+            "honcho_metadata": metadata,
+        },
+    }
+
+
+def _session_peer_from_export(row: dict[str, Any]) -> dict[str, Any]:
+    peer_name = str(row.get("peer_id") or row.get("id") or "unknown")
+    return {
+        "session_id": _local_session_id(str(row.get("session_id") or "unknown")),
+        "peer_id": _local_peer_id(peer_name),
+        "role": "assistant" if _looks_like_assistant(peer_name) else "participant",
+        "left_at": row.get("left_at"),
+    }
+
+
+def _message_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
+    message_id = _source_id(row)
+    peer_name = str(row.get("peer_id") or row.get("peer_name") or "unknown")
+    session_name = str(row.get("session_id") or row.get("session_name") or "unknown")
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    return {
+        "session_id": _local_session_id(session_name),
+        "peer_id": _local_peer_id(peer_name),
+        "role": "assistant" if _looks_like_assistant(peer_name) else "user",
+        "content": str(row.get("content") or ""),
+        "source_message_id": f"honcho-api:{message_id}",
+        "created_at": row.get("created_at"),
+        "metadata": {
+            "source": "honcho-api",
+            "honcho_workspace": workspace,
+            "honcho_message_id": message_id,
+            "honcho_session_name": session_name,
+            "honcho_peer_name": peer_name,
+            "honcho_metadata": metadata,
+        },
+    }
+
+
+def _card_from_export(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "subject_peer_id": _local_peer_id(str(row.get("target_id") or "unknown")),
+        "observer_peer_id": _local_peer_id(str(row.get("observer_id") or "unknown")),
+        "scope": "global",
+        "scope_id": "",
+        "items": row.get("peer_card") if isinstance(row.get("peer_card"), list) else [],
+        "source": str(row.get("source") or "honcho-api-card"),
+    }
+
+
+def _conclusion_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:
+    conclusion_id = _source_id(row)
+    observed = str(row.get("observed_id") or row.get("observed") or "unknown")
+    observer = str(row.get("observer_id") or row.get("observer") or "unknown")
+    return {
+        "id": f"honcho-api-conclusion-{conclusion_id}",
+        "subject_peer_id": _local_peer_id(observed),
+        "observer_peer_id": _local_peer_id(observer),
+        "kind": "conclusion",
+        "content": str(row.get("content") or ""),
+        "confidence": 0.7,
+        "status": "candidate",
+        "source": "honcho-api-conclusion",
+        "evidence_message_ids": [],
+        "metadata": {
+            "source": "honcho-api",
+            "honcho_workspace": workspace,
+            "honcho_conclusion_id": conclusion_id,
+            "honcho_metadata": row,
+        },
+    }
+
+
+def _source_id(row: dict[str, Any]) -> str:
+    return str(row.get("id") or row.get("name") or "unknown")
 
 
 def _table_names(conn: sqlite3.Connection) -> set[str]:

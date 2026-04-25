@@ -137,7 +137,28 @@ This does not change `memory.provider` and therefore does not replace the active
 
 ### Honcho importer
 
-The importer has an initial dry-run planner:
+The preferred importer path uses Honcho's HTTP API so it can work with local, remote, or hosted Honcho instances:
+
+```bash
+hermes-local-memory --db memory.sqlite import honcho-api \
+  --base-url http://localhost:8000/v3 \
+  --workspace hermes \
+  --api-key "$HONCHO_API_KEY" \
+  --dry-run \
+  --json
+```
+
+Current API dry-run planning reports proposed:
+
+- peers
+- `honcho:<peer>` aliases
+- sessions
+- session peer links
+- raw messages
+- peer cards from the peer-card API
+- conclusions as `candidate` facts
+
+A secondary SQLite fixture importer remains available for tests and local forensic exports:
 
 ```bash
 hermes-local-memory --db memory.sqlite import honcho \
@@ -147,17 +168,7 @@ hermes-local-memory --db memory.sqlite import honcho \
   --json
 ```
 
-Current dry-run planning supports Honcho-shaped SQLite exports/fixtures and reports proposed:
-
-- peers
-- `honcho:<peer>` aliases
-- sessions
-- session peer links
-- raw messages
-- peer cards from `peers.internal_metadata`
-- documents/conclusions as `candidate` facts
-
-The dry-run planner does not write the target DB. Apply mode, direct Postgres ingestion, identity map files, and richer collision detection remain planned.
+Both importers are dry-run only and do not write the target DB. Apply mode, identity map file support, and richer collision detection remain planned.
 
 ### Consolidation
 

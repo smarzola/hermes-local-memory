@@ -14,6 +14,7 @@ The inspection and planning commands in this document are read-only:
 - `facts`
 - `search`
 - `context`
+- `import honcho-api --dry-run`
 - `import honcho --dry-run`
 
 They do not mutate the database. They are intended for humans and agents to verify identity mappings, durable facts, and context injection before enabling or migrating a live memory provider.
@@ -145,7 +146,34 @@ hermes-local-memory --db memory.sqlite context \
 
 This renders the same source-labeled context shape used by provider `prefetch()`.
 
-### Plan a Honcho import
+### Plan a Honcho API import
+
+Prefer the API importer when possible. It works with local, remote, or hosted Honcho instances and depends on Honcho's HTTP API rather than private database tables.
+
+```bash
+hermes-local-memory --db memory.sqlite import honcho-api \
+  --base-url http://localhost:8000/v3 \
+  --workspace hermes \
+  --api-key "$HONCHO_API_KEY" \
+  --dry-run \
+  --json
+```
+
+The current Honcho API importer is dry-run only. It pages through public API endpoints and returns a plan with:
+
+- proposed peers
+- proposed `honcho:<peer>` aliases
+- proposed sessions and session peer links
+- raw messages with `source_message_id=honcho-api:<id>`
+- peer cards from the peer-card API
+- conclusions as `candidate` facts
+- counts and warnings
+
+It does not create or modify the target Local Memory database. `--dry-run` is currently required.
+
+### Plan a Honcho SQLite fixture import
+
+The SQLite importer is a fallback for tests, fixtures, and local forensic work where a Honcho-shaped SQLite export is available:
 
 ```bash
 hermes-local-memory --db memory.sqlite import honcho \
@@ -155,17 +183,7 @@ hermes-local-memory --db memory.sqlite import honcho \
   --json
 ```
 
-The current Honcho importer is dry-run only. It reads a SQLite export or fixture containing Honcho-shaped tables and returns a plan with:
-
-- proposed peers
-- proposed `honcho:<peer>` aliases
-- proposed sessions and session peer links
-- raw messages with `source_message_id=honcho:<id>`
-- peer cards from `peers.internal_metadata`
-- Honcho documents as `candidate` facts
-- counts and warnings
-
-It does not create or modify the target Local Memory database. `--dry-run` is currently required.
+This path can read internal artifacts such as `peers.internal_metadata`, but it is not the preferred user migration path because it depends on Honcho's database shape.
 
 ## Repair commands
 
