@@ -81,6 +81,7 @@ def test_context_v2_injects_identity_card_facts_summary_and_retrieval(tmp_path: 
         observer_peer_id="bob",
         session_id="telegram-dm-1001",
         query="Hermes local memory adoption",
+        max_facts=3,
     )
 
     assert context.startswith("# Local Memory")
