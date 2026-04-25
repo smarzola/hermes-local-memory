@@ -302,3 +302,101 @@ def test_cli_maintenance_runs_all_pairs(tmp_path: Path, capsys) -> None:  # noqa
     assert plan["counts"]["pairs"] == 2
     assert plan["counts"]["candidate_promotions"] == 2
     assert store.get_fact("fact_candidate_alice")["status"] == "candidate"
+
+
+def test_cli_reflection_maintenance_and_apply_reflection_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
+    db_path = tmp_path / "memory.sqlite"
+    seed_store(db_path)
+
+    plan_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "reflection-maintenance",
+            "--observer",
+            "ambrogio",
+            "--min-messages",
+            "1",
+            "--json",
+        ],
+        capsys,
+    )
+    plan = json.loads(plan_output)
+    assert plan["schema"] == "hermes-local-memory.reflection-maintenance-plan.v1"
+    assert plan["counts"]["packets"] == 1
+    message_id = plan["packets"][0]["message_window"][0]["id"]
+
+    packet_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "reflection-packet",
+            "--session",
+            "dm",
+            "--observer",
+            "ambrogio",
+            "--since-message-id",
+            "0",
+            "--json",
+        ],
+        capsys,
+    )
+    packet = json.loads(packet_output)
+    assert packet["schema"] == "hermes-local-memory.reflection-packet.v1"
+    assert packet["message_window"][0]["id"] == message_id
+
+    patch_path = tmp_path / "reflection-patch.json"
+    patch_path.write_text(
+        json.dumps(
+            {
+                "schema": "hermes-local-memory.reflection-patch.v1",
+                "session_id": "dm",
+                "observer_peer_id": "ambrogio",
+                "new_candidate_facts": [
+                    {
+                        "subject_peer_id": "simone",
+                        "kind": "preference",
+                        "content": "Simone prefers explicit memory repair commands.",
+                        "confidence": 0.9,
+                        "evidence_message_ids": [message_id],
+                    }
+                ],
+                "session_summary": {
+                    "content": "Simone discussed explicit memory repair commands.",
+                    "covered_from_message_id": message_id,
+                    "covered_to_message_id": message_id,
+                    "model": "hermes-agent",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dry_run_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-reflection-patch",
+            str(patch_path),
+            "--dry-run",
+            "--json",
+        ],
+        capsys,
+    )
+    dry_run = json.loads(dry_run_output)
+    assert dry_run["mode"] == "dry-run"
+    assert dry_run["validation"]["valid"] is True
+
+    apply_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-reflection-patch",
+            str(patch_path),
+            "--apply",
+            "--json",
+        ],
+        capsys,
+    )
+    applied = json.loads(apply_output)
+    assert applied["writes"] == {"candidate_facts_added": 1, "summaries_added": 1}

@@ -27,6 +27,7 @@ Current write commands are explicit repair/mutation commands:
 - `card replace`
 - `consolidate --apply`
 - `apply-patch --apply`
+- `apply-reflection-patch --apply`
 
 `install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
 
@@ -193,9 +194,77 @@ Apply mode is additive and idempotent:
 - the active Hermes memory provider is not switched
 - an existing target DB is backed up automatically unless `--no-backup` is passed
 
+### Build reflection packets from raw messages
+
+Reflection/distillation is the dreaming-like step that happens **before** consolidation. It lets Hermes Agent review stale raw-message windows and propose candidate facts plus session summaries.
+
+Build packets for all stale sessions for an observer:
+
+```bash
+hermes-local-memory --db memory.sqlite reflection-maintenance \
+  --observer bob \
+  --min-messages 20 \
+  --max-messages 100 \
+  --json
+```
+
+Build a packet for one session:
+
+```bash
+hermes-local-memory --db memory.sqlite reflection-packet \
+  --session telegram-dm-1001 \
+  --observer bob \
+  --since-message-id 500 \
+  --max-messages 100 \
+  --json > /tmp/reflection-packet.json
+```
+
+Hermes Agent should use the packet to produce a patch like:
+
+```json
+{
+  "schema": "hermes-local-memory.reflection-patch.v1",
+  "session_id": "telegram-dm-1001",
+  "observer_peer_id": "bob",
+  "new_candidate_facts": [
+    {
+      "subject_peer_id": "alice",
+      "kind": "preference",
+      "content": "Alice prefers local-first memory systems.",
+      "confidence": 0.91,
+      "evidence_message_ids": [501, 508, 533]
+    }
+  ],
+  "session_summary": {
+    "content": "Alice and Bob discussed local-first memory and auditable maintenance.",
+    "covered_from_message_id": 501,
+    "covered_to_message_id": 533,
+    "model": "hermes-agent"
+  }
+}
+```
+
+Validate without writing:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-reflection-patch /tmp/reflection-patch.json \
+  --dry-run \
+  --json
+```
+
+Apply after validation or policy approval:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-reflection-patch /tmp/reflection-patch.json \
+  --apply \
+  --json
+```
+
+Reflection patches are validated against the message window. New memories from reflection are written as `candidate` facts with evidence IDs; summaries are stored as session summaries. Raw messages are never rewritten.
+
 ### Consolidate facts and cards
 
-Consolidation produces an inspectable plan for a subject/observer pair. Dry-run is read-only:
+Consolidation produces an inspectable plan for a subject/observer pair. It should usually run after reflection has produced candidate facts. Dry-run is read-only:
 
 ```bash
 hermes-local-memory --db memory.sqlite consolidate \
@@ -359,40 +428,56 @@ hermes-local-memory --db memory.sqlite card replace \
 
 Full replacement is intentional: it makes card repair auditable and avoids hidden merge behavior.
 
-## Scheduled maintenance with Hermes cron
+## Scheduled reflection and consolidation with Hermes cron
 
 This package intentionally does not embed its own scheduler. Regular memory maintenance should be orchestrated by Hermes' scheduling/cron layer, because Hermes owns model calls, tools, policy, and judgment.
 
-Recommended primary pattern: autonomous but auditable across all pairs.
+Recommended primary pattern: autonomous but auditable. Reflection runs first; consolidation runs second.
 
-1. schedule a Hermes job with clear database path and permission boundaries
-2. have the job discover every subject/observer pair with cards or facts
-3. have the job inspect each pair's card, active facts, candidate facts, aliases, and rendered context
-4. have the job run all-pairs maintenance dry-run first
-5. allow the job to apply narrow, validated changes for pairs whose plans are clearly safe
-6. require the job to skip/report pairs whose plans are large, noisy, ambiguous, identity-confused, or mostly imported meta-facts
-7. require an after-action summary listing changed, skipped, and escalated pairs
+1. schedule a Hermes job with clear repository path, database path, and permission boundaries
+2. run `reflection-maintenance` to discover stale sessions and build raw-message review packets
+3. have Hermes Agent review each packet and produce reflection patches with candidate facts and session summaries
+4. validate every reflection patch with `apply-reflection-patch --dry-run`; apply only narrow, evidence-backed patches
+5. run all-pairs `maintenance --dry-run` after reflection so new candidates can be considered
+6. inspect every subject/observer pair's card, active facts, candidate facts, aliases, summaries, and rendered context
+7. apply narrow, validated consolidation changes for pairs whose plans are clearly safe
+8. skip/report sessions or pairs whose plans are large, noisy, ambiguous, identity-confused, or mostly imported meta-facts
+9. produce an after-action summary listing reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations
 
 Example autonomous scheduled job prompt:
 
 ```text
-Run a Hermes Local Memory maintenance job.
+Run a Hermes Local Memory reflection + consolidation job.
 Repository: /path/to/hermes-local-memory
 Database: ~/.hermes/memory/local_memory.sqlite
 
 Use Hermes Agent reasoning to make maintenance decisions. Use Local Memory as the auditable substrate.
-Inspect all subject/observer pairs with cards or facts.
-Run all-pairs maintenance with --dry-run first.
-For each pair, apply only narrow, coherent, non-duplicative changes clearly supported by facts/cards and compatible with that pair's identity.
-If a pair is noisy, large, ambiguous, identity-confused, or mostly imported Honcho meta-facts, skip that pair.
-Never modify raw messages. Never switch live Hermes provider config. Report exactly what changed, skipped, and escalated for each pair.
+Never modify raw messages. Never switch live Hermes provider config.
+
+Phase 1: Reflection / distillation
+- Run reflection-maintenance for stale sessions first.
+- Review each reflection packet and create reflection patches only for facts clearly supported by packet message IDs.
+- New memories from reflection must be candidate facts, not active facts.
+- Add session summaries only for the exact message windows reviewed.
+- Validate each reflection patch with apply-reflection-patch --dry-run before applying.
+- Skip sessions that are noisy, identity-confused, too large, or ambiguous.
+
+Phase 2: Consolidation / all-pairs maintenance
+- Run all-pairs maintenance with --dry-run.
+- Inspect all subject/observer pairs with cards or facts.
+- Apply only narrow, coherent, non-duplicative changes clearly supported by facts/cards/summaries and compatible with that pair's identity.
+- Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
+
+Report exactly: reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
 ```
 
 Prudent/report-only variant for new deployments, risky imports, or cautious operators:
 
 ```text
-Run the same all-pairs Hermes Local Memory maintenance job, but do not apply changes. Produce only a dry-run report with pair counts, top proposed card additions, top promotions/supersedes, skipped pairs, and recommendations.
+Run the same Hermes Local Memory reflection + all-pairs consolidation job, but do not apply changes. Produce only a dry-run report with stale session counts, proposed candidate facts/summaries, pair counts, top card additions, top promotions/supersedes, skipped items, and recommendations.
 ```
+
+Suggested cadence: start nightly. High-volume agents can move to every 6 hours once dry-run reports look clean.
 
 Both patterns keep scheduling and intelligence in Hermes while Local Memory remains local, deterministic, inspectable, and patch-oriented.
 

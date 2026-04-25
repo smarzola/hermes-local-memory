@@ -5,7 +5,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from hermes_local_memory.consolidation import build_consolidation_plan
+from hermes_local_memory.consolidation import build_consolidation_plan, build_maintenance_plan
+from hermes_local_memory.reflection import build_reflection_maintenance_plan
 from hermes_local_memory.store import LocalMemoryStore
 
 PROFILE_SCHEMA = {
@@ -98,6 +99,49 @@ CONSOLIDATE_SCHEMA = {
                 "description": "Apply the proposed changes. Defaults to false/dry-run.",
             },
             "limit": {"type": "integer", "description": "Maximum facts per status to inspect."},
+        },
+        "required": [],
+    },
+}
+
+MAINTENANCE_SCHEMA = {
+    "name": "memory_maintenance",
+    "description": (
+        "Preview or apply deterministic consolidation across all subject/observer pairs."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "promote_candidates": {
+                "type": "boolean",
+                "description": "Promote unique candidate facts. Defaults to false.",
+            },
+            "apply": {
+                "type": "boolean",
+                "description": "Apply the proposed changes. Defaults to false/dry-run.",
+            },
+            "limit": {"type": "integer", "description": "Maximum facts per status to inspect."},
+        },
+        "required": [],
+    },
+}
+
+REFLECTION_MAINTENANCE_SCHEMA = {
+    "name": "memory_reflection_maintenance",
+    "description": "Build reflection packets for stale sessions before consolidation.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "min_messages": {
+                "type": "integer",
+                "description": (
+                    "Minimum unreflected messages before a session is included. Defaults to 20."
+                ),
+            },
+            "max_messages": {
+                "type": "integer",
+                "description": "Maximum messages per reflection packet. Defaults to 100.",
+            },
         },
         "required": [],
     },
@@ -202,6 +246,8 @@ class LocalMemoryProvider:
             CONTEXT_SCHEMA,
             CONCLUDE_SCHEMA,
             CONSOLIDATE_SCHEMA,
+            MAINTENANCE_SCHEMA,
+            REFLECTION_MAINTENANCE_SCHEMA,
         ]
 
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **_: Any) -> str:
@@ -216,6 +262,10 @@ class LocalMemoryProvider:
                 return self._handle_conclude(args)
             if tool_name == "memory_consolidate":
                 return self._handle_consolidate(args)
+            if tool_name == "memory_maintenance":
+                return self._handle_maintenance(args)
+            if tool_name == "memory_reflection_maintenance":
+                return self._handle_reflection_maintenance(args)
         except Exception as exc:
             return self._error(str(exc))
         return self._error(f"unknown tool: {tool_name}")
@@ -278,6 +328,26 @@ class LocalMemoryProvider:
             promote_candidates=bool(args.get("promote_candidates", False)),
             apply=bool(args.get("apply", False)),
             limit=int(args.get("limit") or 500),
+        )
+        return self._ok(plan=plan)
+
+    def _handle_maintenance(self, args: dict[str, Any]) -> str:
+        store = self._require_store()
+        plan = build_maintenance_plan(
+            store,
+            promote_candidates=bool(args.get("promote_candidates", False)),
+            apply=bool(args.get("apply", False)),
+            limit=int(args.get("limit") or 500),
+        )
+        return self._ok(plan=plan)
+
+    def _handle_reflection_maintenance(self, args: dict[str, Any]) -> str:
+        store = self._require_store()
+        plan = build_reflection_maintenance_plan(
+            store,
+            observer_peer_id=self.assistant_peer_id,
+            min_messages=int(args.get("min_messages") or 20),
+            max_messages=int(args.get("max_messages") or 100),
         )
         return self._ok(plan=plan)
 

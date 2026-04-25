@@ -273,6 +273,25 @@ class LocalMemoryStore:
             rows = conn.execute("select * from sessions order by updated_at desc, id").fetchall()
             return [dict(row) for row in rows]
 
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute("select * from sessions where id = ?", (session_id,)).fetchone()
+            return self._row_to_dict(row)
+
+    def list_session_participants(self, session_id: str) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                select sp.session_id, sp.peer_id, sp.role, p.display_name, p.kind
+                from session_peers sp
+                join peers p on p.id = sp.peer_id
+                where sp.session_id = ? and sp.left_at is null
+                order by sp.role, p.display_name collate nocase, p.id
+                """,
+                (session_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def list_cards(
         self,
         *,
@@ -335,6 +354,37 @@ class LocalMemoryStore:
                 params,
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def list_messages_after(
+        self,
+        *,
+        session_id: str,
+        after_message_id: int = 0,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                select * from messages
+                where session_id = ? and id > ?
+                order by id asc
+                limit ?
+                """,
+                (session_id, after_message_id, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def count_messages_after(self, *, session_id: str, after_message_id: int = 0) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                select count(*) as count
+                from messages
+                where session_id = ? and id > ?
+                """,
+                (session_id, after_message_id),
+            ).fetchone()
+            return int(row["count"] if row is not None else 0)
 
     def list_facts(
         self,
@@ -463,6 +513,83 @@ class LocalMemoryStore:
             if row is None:
                 return []
             return list(json.loads(row["content_json"] or "[]"))
+
+    def add_summary(
+        self,
+        *,
+        scope: str,
+        scope_id: str,
+        content: str,
+        covered_from_message_id: int | None = None,
+        covered_to_message_id: int | None = None,
+        model: str | None = None,
+        summary_id: str | None = None,
+    ) -> dict[str, Any]:
+        summary_id = summary_id or self._new_id("summary")
+        with self.connect() as conn:
+            conn.execute(
+                """
+                insert into summaries(
+                  id, scope, scope_id, content, covered_from_message_id,
+                  covered_to_message_id, model
+                ) values (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    summary_id,
+                    scope,
+                    scope_id,
+                    content,
+                    covered_from_message_id,
+                    covered_to_message_id,
+                    model,
+                ),
+            )
+            row = conn.execute("select * from summaries where id = ?", (summary_id,)).fetchone()
+            assert row is not None
+            return dict(row)
+
+    def list_summaries(
+        self,
+        *,
+        scope: str | None = None,
+        scope_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        clauses = []
+        params: list[Any] = []
+        if scope:
+            clauses.append("scope = ?")
+            params.append(scope)
+        if scope_id:
+            clauses.append("scope_id = ?")
+            params.append(scope_id)
+        where = f"where {' and '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                select * from summaries
+                {where}
+                order by updated_at desc, created_at desc, id
+                limit ?
+                """,
+                params,
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def last_summary_to_message_id(self, *, scope: str, scope_id: str) -> int | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                select max(covered_to_message_id) as last_id
+                from summaries
+                where scope = ? and scope_id = ? and covered_to_message_id is not null
+                """,
+                (scope, scope_id),
+            ).fetchone()
+            if row is None or row["last_id"] is None:
+                return None
+            return int(row["last_id"])
 
     def build_context(
         self,

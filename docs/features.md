@@ -96,13 +96,15 @@ context = provider.prefetch("X")
 ```
 
 The provider exposes these tool schemas:
-
 - `memory_profile`
 - `memory_search`
 - `memory_context`
 - `memory_conclude`
+- `memory_consolidate`
+- `memory_maintenance`
+- `memory_reflection_maintenance`
 
-## Planned features
+## Additional feature areas
 
 ### Hermes plugin shim
 
@@ -172,6 +174,33 @@ hermes-local-memory --db memory.sqlite import honcho \
 
 The SQLite fixture importer remains dry-run only. Identity map file support and richer collision detection remain planned.
 
+### Reflection / distillation
+
+Reflection is the dreaming-like process, but implemented as an explicit agent workflow instead of a hidden backend worker. It currently:
+
+1. discovers stale sessions with unreflected raw messages
+2. builds source-labeled reflection packets containing session metadata, participants, message windows, current cards, existing facts, and safety rules
+3. lets Hermes Agent produce reflection patches
+4. validates evidence message IDs against the packet window
+5. writes new memories as `candidate` facts, not active facts
+6. writes session summaries as reflection checkpoints
+
+CLI examples:
+
+```bash
+hermes-local-memory --db memory.sqlite reflection-maintenance \
+  --observer bob \
+  --min-messages 20 \
+  --max-messages 100 \
+  --json
+
+hermes-local-memory --db memory.sqlite apply-reflection-patch /tmp/reflection-patch.json \
+  --dry-run \
+  --json
+```
+
+Reflection should run before consolidation in scheduled maintenance.
+
 ### Consolidation
 
 Consolidation is explicit, deterministic, and inspectable. It currently:
@@ -216,7 +245,7 @@ Provider tool:
 }
 ```
 
-The MVP does not call an LLM, delete raw history, or silently mutate memory during normal context injection. LLM-assisted extraction and richer summarization remain future layers on top of this deterministic base.
+The MVP does not call an LLM, delete raw history, or silently mutate memory during normal context injection. Hermes Agent owns the reasoning step for reflection and consolidation; Local Memory owns packet building, validation, storage, and auditable apply.
 
 ### Fact replacement/retraction
 

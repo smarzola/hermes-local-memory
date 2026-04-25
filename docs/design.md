@@ -204,11 +204,37 @@ Cards are stored for speed and clarity, but should be rebuildable from facts and
 
 ### `summaries`
 
-Planned summary layer for session/profile/topic summarization.
+Session/profile/topic summarization layer. Session summaries also act as reflection checkpoints: a session summary with `covered_to_message_id=533` means reflection has reviewed raw messages through message `533` for that session.
 
 ```sql
 summaries(id, scope, scope_id, content, covered_from_message_id, covered_to_message_id, model, timestamps)
 ```
+
+## Memory lifecycle
+
+Local Memory separates four loops:
+
+```text
+Turn sync
+  every conversation turn
+  -> append raw user/assistant messages
+
+Reflection / distillation
+  scheduled for stale sessions
+  -> raw message windows become candidate facts + session summaries
+
+Consolidation / maintenance
+  scheduled after reflection
+  -> candidate facts are promoted/superseded/retracted and cards are compacted
+
+Context injection
+  every non-trivial prompt
+  -> identity + card + durable facts + summaries/retrieval are rendered for Hermes
+```
+
+Reflection is the explicit replacement for opaque "dreaming". It does not run hidden model calls in the storage layer. Instead, Local Memory builds source-labeled packets, Hermes Agent reasons over them, and Local Memory validates structured patches before writing candidates and summaries.
+
+Consolidation is downstream from reflection. It assumes candidate facts already exist and focuses on lifecycle and card quality.
 
 ## Current provider tools
 
@@ -266,6 +292,8 @@ Session: `session-1`
 
 The same block is available through `memory_context`.
 
+The intended injection model is broader than "profile only": the compact peer card is the cheapest layer, but context should also include high-signal durable facts, session summaries/checkpoints when available, and query-relevant retrieval. Candidate facts and raw message windows should normally stay out of ordinary prompt injection unless the current task is a memory review.
+
 Trivial prompts such as `ok`, `yes`, and `thanks` do not inject memory.
 
 ## Design choices versus Honcho
@@ -280,15 +308,16 @@ Honcho can synthesize answers through a backend dialectic agent. Local Memory's 
 
 This makes the reasoning step visible in the main agent trace rather than hidden inside a memory backend.
 
-### No autonomous dream worker as the first consolidation path
+### No autonomous dream worker hidden inside the backend
 
-Honcho's dreamer is powerful but opaque. Local Memory will add consolidation as explicit preview/apply jobs:
+Honcho's dreamer is powerful but opaque. Local Memory splits the useful behavior into explicit packet/patch flows:
 
 ```text
-collect candidates -> show diff -> apply facts/card updates
+reflection packet -> Hermes Agent -> reflection patch -> candidate facts + summaries
+consolidation packet -> Hermes Agent -> consolidation patch -> fact/card lifecycle updates
 ```
 
-The goal is to make consolidation auditable and reversible.
+The goal is to make reflection and consolidation auditable, evidence-linked, and reversible. The storage layer does not secretly call models or mutate derived memory in the background.
 
 ### Peer aliases instead of fixed peer config
 
@@ -365,14 +394,22 @@ Still planned:
 - identity map file support
 - richer collision detection and warnings
 
-### Milestone 5: Consolidation
+### Milestone 5: Reflection and consolidation
 
-Planned:
+Done:
 
-- candidate fact extraction
-- card rebuilds
-- dry-run diffs
-- explicit apply/retract flows
+- reflection packets for stale raw-message windows
+- reflection patch validation/apply for candidate facts and session summaries
+- deterministic single-pair consolidation dry-run/apply
+- consolidation packets for Hermes Agent review
+- validated consolidation patch dry-run/apply
+- all-pairs maintenance dry-run/apply
+
+Still planned:
+
+- richer context injection that includes session summaries in addition to cards/facts
+- safer candidate ranking/filtering for noisy imports
+- higher-level Hermes cron templates or setup helpers
 
 ### Milestone 6: Optional embeddings
 

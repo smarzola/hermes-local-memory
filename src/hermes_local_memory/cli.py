@@ -19,6 +19,11 @@ from hermes_local_memory.honcho_import import (
     plan_honcho_export_import,
     plan_honcho_import,
 )
+from hermes_local_memory.reflection import (
+    apply_reflection_patch,
+    build_reflection_maintenance_plan,
+    build_reflection_packet,
+)
 from hermes_local_memory.store import LocalMemoryStore
 
 
@@ -126,6 +131,40 @@ def build_parser() -> argparse.ArgumentParser:
     maintenance_mode.add_argument("--dry-run", action="store_true")
     maintenance_mode.add_argument("--apply", action="store_true")
     maintenance.add_argument("--json", action="store_true", help="Print JSON")
+
+    reflection_packet = sub.add_parser("reflection-packet", help="Build an agent reflection packet")
+    reflection_packet.add_argument("--session", required=True, help="Session id to review")
+    reflection_packet.add_argument("--observer", required=True, help="Observer peer id or alias")
+    reflection_packet.add_argument(
+        "--since-message-id",
+        type=int,
+        help="Only include messages after this id",
+    )
+    reflection_packet.add_argument("--max-messages", type=int, default=100)
+    reflection_packet.add_argument("--json", action="store_true", help="Print JSON")
+
+    apply_reflection = sub.add_parser(
+        "apply-reflection-patch",
+        help="Validate or apply a reflection patch",
+    )
+    apply_reflection.add_argument("patch_file", help="Path to reflection patch JSON")
+    reflection_mode = apply_reflection.add_mutually_exclusive_group()
+    reflection_mode.add_argument("--dry-run", action="store_true")
+    reflection_mode.add_argument("--apply", action="store_true")
+    apply_reflection.add_argument("--json", action="store_true", help="Print JSON")
+
+    reflection_maintenance = sub.add_parser(
+        "reflection-maintenance",
+        help="Build reflection packets for stale sessions",
+    )
+    reflection_maintenance.add_argument(
+        "--observer",
+        required=True,
+        help="Observer peer id or alias",
+    )
+    reflection_maintenance.add_argument("--min-messages", type=int, default=20)
+    reflection_maintenance.add_argument("--max-messages", type=int, default=100)
+    reflection_maintenance.add_argument("--json", action="store_true", help="Print JSON")
 
     alias = sub.add_parser("alias", help="Mutate aliases explicitly")
     alias_sub = alias.add_subparsers(dest="alias_command", required=True)
@@ -355,6 +394,44 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
         )
         _print_plan(result, as_json=args.json)
+        return 0
+    if args.command == "reflection-packet":
+        observer_id = _resolve_required_peer_id(store, args.observer)
+        packet = build_reflection_packet(
+            store,
+            session_id=args.session,
+            observer_peer_id=observer_id,
+            since_message_id=args.since_message_id,
+            max_messages=args.max_messages,
+        )
+        _print_one(packet, as_json=args.json)
+        return 0
+    if args.command == "apply-reflection-patch":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        patch_text = Path(args.patch_file).expanduser().read_text(encoding="utf-8")
+        reflection_patch = json.loads(patch_text)
+        observer_id = _resolve_required_peer_id(store, reflection_patch["observer_peer_id"])
+        packet = build_reflection_packet(
+            store,
+            session_id=reflection_patch["session_id"],
+            observer_peer_id=observer_id,
+            since_message_id=0,
+            max_messages=10000,
+        )
+        reflection_patch["observer_peer_id"] = observer_id
+        result = apply_reflection_patch(store, packet, reflection_patch, apply=args.apply)
+        _print_one(result, as_json=args.json)
+        return 0
+    if args.command == "reflection-maintenance":
+        observer_id = _resolve_required_peer_id(store, args.observer)
+        result = build_reflection_maintenance_plan(
+            store,
+            observer_peer_id=observer_id,
+            min_messages=args.min_messages,
+            max_messages=args.max_messages,
+        )
+        _print_one(result, as_json=args.json)
         return 0
     if args.command == "alias":
         peer_id = _resolve_required_peer_id(store, args.peer)

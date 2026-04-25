@@ -44,7 +44,9 @@ Hermes Local Memory is opinionated in the other direction:
 | `memory_search` | Search active durable facts through SQLite FTS5. |
 | `memory_context` | Show exactly what local memory would inject into the prompt. |
 | `memory_conclude` | Add durable facts with evidence links to the most recent synced user turn. |
-| `memory_consolidate` | Preview/apply deterministic card/fact consolidation. |
+| `memory_consolidate` | Preview/apply deterministic card/fact consolidation for one peer. |
+| `memory_maintenance` | Preview/apply deterministic consolidation across all subject/observer pairs. |
+| `memory_reflection_maintenance` | Build reflection packets for stale sessions before consolidation. |
 
 ### CLI capabilities
 
@@ -56,8 +58,11 @@ Hermes Local Memory is opinionated in the other direction:
 - full-card replacement from JSON
 - Honcho API dry-run/apply import
 - Honcho identity maps for fragmented peers
+- reflection packets for stale raw-message windows
+- validated reflection patch dry-run/apply for candidate facts and session summaries
 - deterministic consolidation dry-run/apply
 - consolidation packets for Hermes Agent review
+- all-pairs maintenance dry-run/apply
 - validated consolidation patch dry-run/apply
 - Hermes plugin shim installation
 
@@ -285,33 +290,55 @@ See [CLI docs](docs/cli.md) for full importer behavior.
 
 ## How the memory flow works
 
-Local Memory separates **raw history**, **durable facts**, **compact cards**, and **agent decisions**.
+Local Memory separates **raw history**, **reflection**, **durable facts**, **compact cards**, and **agent decisions**.
 
 ```text
-Conversation turn
-  -> raw messages are stored immutably
-  -> explicit facts can be added with evidence
-  -> search/context retrieve facts and cards deterministically
-  -> consolidation periodically reviews candidates and card quality
-  -> Hermes Agent decides what to promote, supersede, retract, or summarize
+Normal conversation turn
+  -> Hermes injects a compact source-labeled context block
+  -> user/assistant messages are stored immutably as raw history
+  -> explicit facts can be added immediately with evidence
+
+Scheduled reflection / distillation
+  -> stale raw-message windows become reflection packets
+  -> Hermes Agent reviews the packets
+  -> Local Memory validates reflection patches
+  -> candidate facts and session summaries are written with evidence
+
+Scheduled consolidation / maintenance
+  -> candidate facts + active facts + cards are reviewed across all subject/observer pairs
+  -> Hermes Agent decides what to promote, supersede, retract, or compact into cards
   -> Local Memory validates and applies structured changes
+
+Next prompt injection
+  -> compact card + durable facts + session summary + relevant retrieval are injected
 ```
 
 The important split is:
 
 - **Local Memory** stores, retrieves, validates, and applies auditable changes.
 - **Hermes Agent** reasons about ambiguous memory quality decisions.
-- **Hermes cron/scheduler** runs recurring maintenance jobs.
+- **Hermes cron/scheduler** runs recurring reflection before consolidation.
+
+The profile/card is **not** the only thing injected. Normal prompt context should be composed from:
+
+1. identity/session information,
+2. the compact subject/observer card,
+3. high-signal durable facts,
+4. the current session summary when available,
+5. relevant retrieved facts/summaries for the current query.
+
+Candidate facts and raw message windows are usually **not** injected into ordinary conversations. They are primarily used during maintenance/review jobs unless explicitly requested.
 
 Why maintenance is needed:
 
-- conversations create duplicate or overlapping memories
+- ordinary conversations create useful memories that are not explicitly saved during the turn
+- conversations also create duplicate or overlapping memories
 - imported systems can contain stale identities or noisy derived facts
 - candidate facts need promotion, superseding, or retraction
 - compact cards should stay useful instead of growing into transcripts
 - raw history should remain intact while derived layers improve over time
 
-This is why the project supports both deterministic consolidation and agent-orchestrated scheduled maintenance.
+This is why the project supports both reflection/distillation and deterministic all-pairs consolidation, orchestrated by Hermes scheduled jobs rather than hidden backend workers.
 
 ---
 
@@ -410,47 +437,69 @@ The memory package should not own model calls. Hermes should.
 
 ---
 
-## Scheduled maintenance with Hermes cron
+## Scheduled reflection and consolidation with Hermes cron
 
-Regular memory maintenance is a first-class use case. The recommended path is to let Hermes schedule an autonomous maintenance job that has enough context, clear constraints, and permission boundaries to make routine cleanup decisions itself.
+Regular memory maintenance is a first-class use case. The recommended path is to let Hermes schedule an autonomous job that has enough context, clear constraints, and permission boundaries to make routine memory-quality decisions itself.
 
 The package should stay simple and local; Hermes should own scheduling, model calls, and judgment.
 
-Recommended autonomous schedule:
+Recommended autonomous cadence:
 
-- run weekly or after a configurable number of new turns
-- discover every subject/observer pair with cards or facts
-- inspect each pair's current card, active facts, candidate facts, aliases, and rendered context
-- use Hermes Agent to decide which pairs need consolidation
-- apply narrow, validated changes per pair when the plan is clearly safe
-- deliver a concise all-pairs summary of what changed and what was skipped
-- escalate individual pairs to human review when their plan is large, noisy, ambiguous, or would rewrite the card heavily
+- run nightly for most users, or every 6 hours for high-volume agents
+- first run **reflection/distillation** over stale sessions so ordinary conversation can become candidate facts and summaries
+- then run **all-pairs consolidation** across every subject/observer pair with cards or facts
+- inspect each pair's current card, active facts, candidate facts, aliases, summaries, and rendered context
+- apply narrow, validated changes when the plan is clearly safe
+- deliver a concise report of reflected sessions, changed pairs, skipped pairs, and escalations
+- escalate individual sessions/pairs when plans are large, noisy, ambiguous, identity-confused, or would rewrite cards heavily
+
+Reflection should generally run before consolidation:
+
+```text
+raw messages -> reflection packets -> candidate facts + session summaries
+candidate facts + active facts + cards -> consolidation -> compact cards
+compact cards + durable facts + summaries + retrieval -> prompt injection
+```
 
 Example Hermes cron prompt:
 
 ```text
-Run a Hermes Local Memory maintenance job.
+Run a Hermes Local Memory reflection + consolidation job.
 Repository: /path/to/hermes-local-memory
 Database: ~/.hermes/memory/local_memory.sqlite
 
 Use Local Memory as the auditable substrate and use Hermes reasoning for judgment.
-Inspect all subject/observer pairs with cards or facts.
-Run all-pairs maintenance with --dry-run first.
-For each pair, apply only narrow, coherent, non-duplicative changes that are clearly supported by facts/cards and fit the pair's identity.
-If a pair is noisy, large, ambiguous, identity-confused, or mostly imported Honcho meta-facts, skip that pair and summarize what blocked automatic consolidation.
-Never modify raw messages. Never switch the live Hermes provider config. Report exactly what changed, skipped, and escalated for each pair.
+Never modify raw messages. Never switch the live Hermes provider config.
+
+Phase 1: Reflection / distillation
+- Run reflection-maintenance for stale sessions first.
+- Review each reflection packet and create reflection patches only for facts clearly supported by packet message IDs.
+- New memories from reflection must be candidate facts, not active facts.
+- Add session summaries only for the exact message windows reviewed.
+- Validate each reflection patch with apply-reflection-patch --dry-run before applying.
+- Skip sessions that are noisy, identity-confused, too large, or ambiguous.
+
+Phase 2: Consolidation / all-pairs maintenance
+- Run all-pairs maintenance with --dry-run.
+- Inspect all subject/observer pairs with cards or facts.
+- Apply only narrow, coherent, non-duplicative changes clearly supported by facts/cards/summaries and compatible with that pair's identity.
+- Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
+
+Report exactly: reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
 ```
 
 A more prudent/report-only variant is also useful for new deployments or risky imports:
 
 ```text
-Run the same all-pairs maintenance job, but do not apply changes. Produce only a dry-run report with pair counts, top proposed card additions, top promotions/supersedes, skipped pairs, and recommendations.
+Run the same reflection + all-pairs consolidation job, but do not apply changes. Produce only a dry-run report with stale session counts, proposed candidate facts/summaries, pair counts, top card additions, top promotions/supersedes, skipped items, and recommendations.
 ```
 
 This gives both modes:
 
 - **autonomous by default** for well-scoped, well-validated maintenance
 - **report-only** when a human wants extra caution
+
+To schedule this from Hermes, create a recurring Hermes cron job with a self-contained version of the prompt above. Recommended starting schedule: nightly. High-volume deployments can move to every 6 hours after the dry-run reports look clean.
 
 ## Documentation
 

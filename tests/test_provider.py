@@ -46,6 +46,8 @@ def test_provider_exposes_memory_tools_and_can_write_profile_card(tmp_path: Path
         "memory_context",
         "memory_conclude",
         "memory_consolidate",
+        "memory_maintenance",
+        "memory_reflection_maintenance",
     }
 
     write_result = parse_tool_result(
@@ -145,3 +147,37 @@ def test_provider_consolidate_previews_and_applies_candidate_promotion(tmp_path:
         subject_peer_id=provider.user_peer_id,
         observer_peer_id=provider.assistant_peer_id,
     )
+
+
+def test_provider_exposes_all_pairs_and_reflection_maintenance_tools(tmp_path: Path) -> None:
+    provider = make_provider(tmp_path)
+    provider.sync_turn("I prefer memory to grow from ordinary conversation.", "Understood.")
+    store = provider.store
+    assert store is not None
+    store.add_fact(
+        fact_id="candidate_from_reflection",
+        subject_peer_id=provider.user_peer_id,
+        observer_peer_id=provider.assistant_peer_id,
+        content="Simone prefers natural memory growth.",
+        kind="preference",
+        status="candidate",
+    )
+
+    reflection = parse_tool_result(
+        provider.handle_tool_call(
+            "memory_reflection_maintenance",
+            {"min_messages": 1, "max_messages": 20},
+        )
+    )
+    assert reflection["plan"]["schema"] == "hermes-local-memory.reflection-maintenance-plan.v1"
+    assert reflection["plan"]["counts"]["packets"] == 1
+
+    maintenance = parse_tool_result(
+        provider.handle_tool_call(
+            "memory_maintenance",
+            {"promote_candidates": True},
+        )
+    )
+    assert maintenance["plan"]["mode"] == "dry-run"
+    assert maintenance["plan"]["counts"]["pairs"] == 1
+    assert maintenance["plan"]["counts"]["candidate_promotions"] == 1
