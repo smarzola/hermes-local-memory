@@ -381,6 +381,87 @@ def test_cli_candidate_review_packet_and_apply_candidate_patch(tmp_path: Path, c
     assert store.get_fact("fact_candidate_review")["status"] == "active"
 
 
+def test_cli_card_review_packet_and_apply_card_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
+    db_path = tmp_path / "memory.sqlite"
+    store = seed_store(db_path)
+    store.set_card(
+        subject_peer_id="simone",
+        observer_peer_id="ambrogio",
+        items=[
+            "Name: Simone",
+            "PREFERENCE: Prefers explicit repair commands",
+            "PREFERENCE: Is willing to try suggested changes",
+        ],
+    )
+
+    packet_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "card-review-packet",
+            "--peer",
+            "simone",
+            "--observer",
+            "ambrogio",
+            "--json",
+        ],
+        capsys,
+    )
+    packet = json.loads(packet_output)
+    assert packet["schema"] == "hermes-local-memory.card-review-packet.v1"
+    assert packet["current_card"] == [
+        "Name: Simone",
+        "PREFERENCE: Prefers explicit repair commands",
+        "PREFERENCE: Is willing to try suggested changes",
+    ]
+
+    patch_path = tmp_path / "card-patch.json"
+    patch_path.write_text(
+        json.dumps(
+            {
+                "schema": "hermes-local-memory.card-review-patch.v1",
+                "subject_peer_id": "simone",
+                "observer_peer_id": "ambrogio",
+                "card_replace": ["Name: Simone", "PREFERENCE: Prefers explicit repair commands"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dry_run_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-card-review-patch",
+            str(patch_path),
+            "--dry-run",
+            "--json",
+        ],
+        capsys,
+    )
+    dry_run = json.loads(dry_run_output)
+    assert dry_run["validation"]["valid"] is True
+    assert len(store.get_card(subject_peer_id="simone", observer_peer_id="ambrogio")) == 3
+
+    apply_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-card-review-patch",
+            str(patch_path),
+            "--apply",
+            "--json",
+        ],
+        capsys,
+    )
+    applied = json.loads(apply_output)
+    assert applied["writes"] == {"card_replaced": True, "before_count": 3, "after_count": 2}
+    assert store.get_card(subject_peer_id="simone", observer_peer_id="ambrogio") == [
+        "Name: Simone",
+        "PREFERENCE: Prefers explicit repair commands",
+    ]
+
+
 def test_cli_reflection_maintenance_and_apply_reflection_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
     db_path = tmp_path / "memory.sqlite"
     seed_store(db_path)

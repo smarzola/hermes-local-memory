@@ -16,6 +16,8 @@ The inspection and planning commands in this document are read-only:
 - `context`
 - `import honcho-api --dry-run`
 - `import honcho --dry-run`
+- `candidate-review-packet`
+- `card-review-packet`
 
 They do not mutate the database. They are intended for humans and agents to verify identity mappings, durable facts, and context injection before enabling or migrating a live memory provider.
 
@@ -27,6 +29,8 @@ Current write commands are explicit repair/mutation commands:
 - `card replace`
 - `consolidate --apply`
 - `apply-patch --apply`
+- `apply-candidate-review-patch --apply`
+- `apply-card-review-patch --apply`
 - `apply-reflection-patch --apply`
 
 `install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
@@ -308,6 +312,51 @@ hermes-local-memory --db memory.sqlite apply-candidate-review-patch /tmp/alice-c
 ```
 
 Candidate review patches only change fact status (`active`, `superseded`, `retracted`) and optional compact card additions. Raw messages are never rewritten.
+
+### Review imported cards safely
+
+Honcho and other memory systems may import compact cards that are useful but too verbose, duplicate, stale, or task-local. Card review is the migration cleanup step for that derived layer. It builds a packet containing the current card plus nearby active/candidate facts, lets Hermes Agent draft a cleaned full-card replacement, and validates the replacement before applying.
+
+Build a packet:
+
+```bash
+hermes-local-memory --db memory.sqlite card-review-packet \
+  --peer alice \
+  --observer bob \
+  --json > /tmp/alice-card.json
+```
+
+Hermes Agent can produce a patch like:
+
+```json
+{
+  "schema": "hermes-local-memory.card-review-patch.v1",
+  "subject_peer_id": "alice",
+  "observer_peer_id": "bob",
+  "card_replace": [
+    "Name: Alice",
+    "PREFERENCE: Prefers local-first, auditable memory systems"
+  ]
+}
+```
+
+Validate without writing:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-card-review-patch /tmp/alice-card-patch.json \
+  --dry-run \
+  --json
+```
+
+Apply after validation or policy approval:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-card-review-patch /tmp/alice-card-patch.json \
+  --apply \
+  --json
+```
+
+Card review is a full-card replacement only. It does not mutate facts and never rewrites raw messages.
 
 ### Consolidate facts and cards
 

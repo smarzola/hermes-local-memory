@@ -214,6 +214,17 @@ Supported actions:
 
 This is preferable to blindly applying broad imported-candidate promotion.
 
+### Card review
+
+Card review is the migration cleanup path for imported compact cards. Imported cards can contain valuable profile lines while also carrying duplicate, stale, task-local, or overly verbose items. Card review makes that cleanup explicit:
+
+1. build a `card-review-packet` for one subject/observer pair
+2. let Hermes Agent draft a compact full-card replacement
+3. validate the `card-review-patch`
+4. apply only after dry-run or policy approval
+
+Card review replaces only the derived card. It does not mutate facts, summaries, aliases, sessions, or raw messages.
+
 ### Consolidation
 
 Consolidation is explicit, deterministic, and inspectable. It currently:

@@ -286,7 +286,44 @@ Then pass:
 --identity-map ~/.hermes/local-memory-identity-map.json
 ```
 
-See [CLI docs](docs/cli.md) for full importer behavior.
+After import, treat candidate facts and imported cards as separate review steps:
+
+1. use `candidate-review-packet` / `apply-candidate-review-patch` to promote only high-signal imported candidate facts;
+2. use `card-review-packet` / `apply-card-review-patch` to clean imported cards so compact prompt context does not inherit stale, duplicate, or task-local lines.
+
+Example card cleanup packet:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory_trial.sqlite card-review-packet \
+  --peer alice \
+  --observer bob \
+  --json > /tmp/alice-card-packet.json
+```
+
+Example full-card replacement patch:
+
+```json
+{
+  "schema": "hermes-local-memory.card-review-patch.v1",
+  "subject_peer_id": "alice",
+  "observer_peer_id": "bob",
+  "card_replace": [
+    "Name: Alice",
+    "PREFERENCE: Prefers local-first, auditable memory systems"
+  ]
+}
+```
+
+Apply only after a dry-run validation:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory_trial.sqlite apply-card-review-patch \
+  /tmp/alice-card-patch.json \
+  --dry-run \
+  --json
+```
+
+See [CLI docs](docs/cli.md) for full importer and migration-review behavior.
 
 ---
 
@@ -380,7 +417,25 @@ If a human hands this repository to an agent, the agent should be able to bootst
      --json
    ```
 
-5. **Inspect identity and context**
+5. **Review imported candidates and cards before judging context quality**
+
+   ```bash
+   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" candidate-review-packet \
+     --peer alice \
+     --observer bob \
+     --source honcho-api-conclusion \
+     --limit 100 \
+     --json > /tmp/alice-candidates.json
+
+   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" card-review-packet \
+     --peer alice \
+     --observer bob \
+     --json > /tmp/alice-card.json
+   ```
+
+   Have Hermes Agent produce validated patches, dry-run them first, and apply only narrow, reviewed changes to the trial DB.
+
+6. **Inspect identity and context**
 
    ```bash
    PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" peers --json
@@ -391,11 +446,11 @@ If a human hands this repository to an agent, the agent should be able to bootst
      --query "memory quality"
    ```
 
-6. **Set up scheduled maintenance in Hermes, not in this package**
+7. **Set up scheduled maintenance in Hermes, not in this package**
 
    Use the cron prompt in [Scheduled maintenance with Hermes cron](#scheduled-maintenance-with-hermes-cron). Start with the trial DB. Only move to a live DB once import, identity mapping, context, and rollback expectations are clear.
 
-7. **Only switch Hermes after validation**
+8. **Only switch Hermes after validation**
 
    ```yaml
    memory:

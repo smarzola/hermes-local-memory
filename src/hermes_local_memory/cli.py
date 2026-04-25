@@ -9,6 +9,7 @@ from hermes_local_memory.candidate_review import (
     apply_candidate_review_patch,
     build_candidate_review_packet,
 )
+from hermes_local_memory.card_review import apply_card_review_patch, build_card_review_packet
 from hermes_local_memory.consolidation import (
     apply_consolidation_patch,
     build_consolidation_packet,
@@ -147,6 +148,26 @@ def build_parser() -> argparse.ArgumentParser:
     candidate_mode.add_argument("--dry-run", action="store_true")
     candidate_mode.add_argument("--apply", action="store_true")
     apply_candidate.add_argument("--json", action="store_true", help="Print JSON")
+
+    card_packet = sub.add_parser(
+        "card-review-packet",
+        help="Build an agent packet for compact peer-card cleanup during migration",
+    )
+    card_packet.add_argument("--peer", required=True, help="Subject peer id or alias")
+    card_packet.add_argument("--observer", required=True, help="Observer peer id or alias")
+    card_packet.add_argument("--max-active", type=int, default=50)
+    card_packet.add_argument("--max-candidates", type=int, default=50)
+    card_packet.add_argument("--json", action="store_true", help="Print JSON")
+
+    apply_card = sub.add_parser(
+        "apply-card-review-patch",
+        help="Validate or apply a full-card cleanup patch",
+    )
+    apply_card.add_argument("patch_file", help="Path to card review patch JSON")
+    card_mode = apply_card.add_mutually_exclusive_group()
+    card_mode.add_argument("--dry-run", action="store_true")
+    card_mode.add_argument("--apply", action="store_true")
+    apply_card.add_argument("--json", action="store_true", help="Print JSON")
 
     maintenance = sub.add_parser("maintenance", help="Run consolidation across all pairs")
     maintenance.add_argument("--promote-candidates", action="store_true")
@@ -431,6 +452,32 @@ def main(argv: list[str] | None = None) -> int:
             limit=10000,
         )
         result = apply_candidate_review_patch(store, packet, patch, apply=args.apply)
+        _print_one(result, as_json=args.json)
+        return 0
+    if args.command == "card-review-packet":
+        peer_id = _resolve_required_peer_id(store, args.peer)
+        observer_id = _resolve_required_peer_id(store, args.observer)
+        packet = build_card_review_packet(
+            store,
+            subject_peer_id=peer_id,
+            observer_peer_id=observer_id,
+            max_active=args.max_active,
+            max_candidates=args.max_candidates,
+        )
+        _print_one(packet, as_json=args.json)
+        return 0
+    if args.command == "apply-card-review-patch":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        patch = json.loads(Path(args.patch_file).expanduser().read_text(encoding="utf-8"))
+        packet = build_card_review_packet(
+            store,
+            subject_peer_id=patch["subject_peer_id"],
+            observer_peer_id=patch["observer_peer_id"],
+            max_active=10000,
+            max_candidates=10000,
+        )
+        result = apply_card_review_patch(store, packet, patch, apply=args.apply)
         _print_one(result, as_json=args.json)
         return 0
     if args.command == "maintenance":
