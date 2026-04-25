@@ -22,6 +22,13 @@ This project is an open-source, boring-engineering replacement for server-shaped
 - No hidden dialectic/dream worker as the core behavior.
 - No destructive migration that treats old history as expendable.
 
+## Documentation
+
+- [Features](docs/features.md)
+- [Design](docs/design.md)
+- [Contributing](CONTRIBUTING.md)
+- [Agent instructions](AGENTS.md)
+
 ## Current surfaces
 
 The package now includes a Hermes-compatible `LocalMemoryProvider` with these tools:
@@ -49,11 +56,37 @@ pip install -e '.[dev]'
 pytest
 ```
 
+## Install the Hermes plugin shim
+
+From a checkout:
+
+```bash
+cd hermes-local-memory
+PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
+```
+
+If installed as a package, use the console script:
+
+```bash
+hermes-local-memory install-shim --hermes-home ~/.hermes
+```
+
+Then configure Hermes:
+
+```yaml
+memory:
+  provider: local_memory
+```
+
+Restart Hermes or start a fresh session after changing memory providers.
+
 ## Repository layout
 
 ```text
 src/hermes_local_memory/
   __init__.py       Public package exports
+  cli.py            Developer/install CLI
+  hermes_plugin.py  Hermes user-plugin shim renderer
   provider.py       Hermes-compatible provider lifecycle and tools
   store.py          SQLite store and deterministic retrieval core
   schema.py         Schema migrations

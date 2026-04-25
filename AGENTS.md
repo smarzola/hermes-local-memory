@@ -31,7 +31,7 @@ Build a local-first Hermes Agent memory provider that is dramatically simpler th
 
 ## Near-term roadmap
 
-1. Thin installable Hermes plugin shim around `LocalMemoryProvider`.
+1. Live Hermes runtime validation of the generated `local_memory` plugin shim.
 2. CLI/dev utility for inspecting the SQLite database.
 3. Honcho importer with dry-run/apply modes.
 4. Consolidation previews and card rebuilds.
