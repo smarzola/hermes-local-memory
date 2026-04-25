@@ -75,7 +75,7 @@ Sessions represent conversation lanes. A Telegram DM, CLI conversation, or group
 
 ### GitHub CI
 
-The repository has GitHub Actions CI running tests and Ruff linting on Python 3.10, 3.11, and 3.12.
+The repository has GitHub Actions CI running tests and Ruff linting on Python 3.11, 3.12, 3.13, and 3.14.
 
 ## Current provider API
 

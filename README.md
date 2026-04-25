@@ -696,7 +696,7 @@ uv build
 # or: python -m build
 ```
 
-CI runs on Python 3.10, 3.11, and 3.12. See [docs/release.md](docs/release.md) for the release checklist.
+CI runs on Python 3.11, 3.12, 3.13, and 3.14. See [docs/release.md](docs/release.md) for the release checklist.
 
 ---
 

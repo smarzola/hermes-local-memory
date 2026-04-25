@@ -116,13 +116,20 @@ Release notes should include:
 
 ## PyPI publish
 
-Only publish after the GitHub release artifacts and smoke install pass.
+PyPI publication is handled by GitHub Actions, not by a developer machine. The
+`Publish to PyPI` workflow runs only for pushed tags matching `v*` and uses PyPI
+Trusted Publishing / OIDC, so no PyPI token is stored in the repository and no
+local `twine upload` step is required.
 
-```bash
-python -m twine upload dist/*
-```
+Before pushing a release tag:
 
-Or via trusted publishing later, if configured in GitHub Actions.
+1. Configure a PyPI Trusted Publisher for this repository and the
+   `.github/workflows/publish.yml` workflow.
+2. Confirm the GitHub release artifacts and smoke install pass.
+3. Push the version tag.
+
+The workflow builds distributions, runs `twine check`, and publishes the exact
+tagged source to PyPI.
 
 ## Post-release verification
 
