@@ -2,8 +2,44 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hermes_local_memory.consolidation import build_consolidation_plan
+from hermes_local_memory.consolidation import build_consolidation_plan, build_maintenance_plan
 from hermes_local_memory.store import LocalMemoryStore
+
+
+def test_maintenance_does_not_append_active_facts_to_existing_cards(tmp_path: Path) -> None:
+    store = LocalMemoryStore(tmp_path / "memory.sqlite")
+    store.initialize()
+    store.upsert_peer("alice", display_name="Alice", kind="human")
+    store.upsert_peer("bob", display_name="Bob", kind="ai")
+    store.set_card(
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        items=[
+            "Name: Alice",
+            "Prefers local-first, auditable memory.",
+        ],
+    )
+    store.add_fact(
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        content="Alice prefers local-first memory.",
+        kind="preference",
+        status="active",
+        source="manual",
+    )
+
+    plan = build_maintenance_plan(
+        store,
+        promote_candidates=True,
+        apply=True,
+    )
+
+    assert plan["counts"]["card_additions"] == 0
+    assert plan["writes"]["cards_replaced"] == 0
+    assert store.get_card(subject_peer_id="alice", observer_peer_id="bob") == [
+        "Name: Alice",
+        "Prefers local-first, auditable memory.",
+    ]
 
 
 def test_imported_honcho_candidates_are_not_bulk_promoted(tmp_path: Path) -> None:
@@ -126,7 +162,7 @@ def test_consolidation_plan_is_preview_only_by_default(tmp_path: Path) -> None:
         "candidate_facts": 3,
         "candidate_promotions": 1,
         "candidate_supersedes": 2,
-        "card_additions": 2,
+        "card_additions": 1,
     }
     assert [item["id"] for item in plan["candidate_promotions"]] == [ids["unique"]]
     assert {item["id"] for item in plan["candidate_supersedes"]} == {
@@ -134,7 +170,6 @@ def test_consolidation_plan_is_preview_only_by_default(tmp_path: Path) -> None:
         ids["duplicate_fact"],
     }
     assert plan["card_additions"] == [
-        "Alice prefers lean memory.",
         "Alice prefers local-first memory.",
     ]
 
@@ -171,12 +206,11 @@ def test_consolidation_apply_promotes_candidates_supersedes_duplicates_and_updat
     assert store.get_card(subject_peer_id="alice", observer_peer_id="bob") == [
         "Name: Alice",
         "Alice lives in Example District.",
-        "Alice prefers lean memory.",
         "Alice prefers local-first memory.",
     ]
 
 
-def test_consolidation_without_candidate_promotion_only_adds_active_facts_to_card(
+def test_consolidation_without_candidate_promotion_leaves_card_unchanged(
     tmp_path: Path,
 ) -> None:
     store, ids = _store_with_candidates(tmp_path)
@@ -190,9 +224,9 @@ def test_consolidation_without_candidate_promotion_only_adds_active_facts_to_car
     )
 
     assert plan["counts"]["candidate_promotions"] == 0
+    assert plan["counts"]["card_additions"] == 0
     assert store.get_fact(ids["unique"])["status"] == "candidate"
     assert store.get_card(subject_peer_id="alice", observer_peer_id="bob") == [
         "Name: Alice",
         "Alice lives in Example District.",
-        "Alice prefers lean memory.",
     ]

@@ -58,11 +58,6 @@ def build_consolidation_plan(
 
     card_additions = []
     card_addition_norms = set(card_norms)
-    for fact in active_facts:
-        norm = _normalize_line(fact["content"])
-        if norm not in card_addition_norms:
-            card_additions.append(fact["content"])
-            card_addition_norms.add(norm)
     if promote_candidates:
         promoted_ids = {item["id"] for item in candidate_promotions}
         for fact in candidate_facts:
