@@ -59,11 +59,13 @@ Default:
 
 ### Install Hermes shim
 
+For normal use, install the published package first and run:
+
 ```bash
 hermes-local-memory install-shim --hermes-home ~/.hermes
 ```
 
-From a checkout without installing the package:
+From a GitHub checkout used for development or unreleased debugging:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes

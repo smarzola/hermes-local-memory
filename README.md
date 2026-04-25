@@ -92,9 +92,9 @@ The SQLite store includes:
 
 ## Quick install for humans
 
-### Option A: install as a tool
+### Recommended: install the published package
 
-After a package release is available:
+For normal use, install the published PyPI package as a CLI tool:
 
 ```bash
 uv tool install hermes-local-memory
@@ -102,12 +102,10 @@ uv tool install hermes-local-memory
 pipx install hermes-local-memory
 ```
 
-Before a package release, install from GitHub:
+If you are already inside a virtualenv:
 
 ```bash
-uv tool install git+https://github.com/smarzola/hermes-local-memory.git
-# or
-pipx install git+https://github.com/smarzola/hermes-local-memory.git
+pip install hermes-local-memory
 ```
 
 Verify:
@@ -116,7 +114,9 @@ Verify:
 hermes-local-memory --help
 ```
 
-### Option B: run from a checkout
+### Development path: clone from GitHub
+
+Use a checkout only if you want to develop, test unreleased changes, or run directly from source:
 
 ```bash
 git clone https://github.com/smarzola/hermes-local-memory.git
@@ -124,11 +124,11 @@ cd hermes-local-memory
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-pytest
+PYTHONPATH=src pytest -q
 ruff check .
 ```
 
-Without installing:
+Run the CLI from a checkout with:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli --help
@@ -136,13 +136,13 @@ PYTHONPATH=src python -m hermes_local_memory.cli --help
 
 ### Install the Hermes plugin shim
 
-From an installed package:
+If installed from PyPI/pipx/uv:
 
 ```bash
 hermes-local-memory install-shim --hermes-home ~/.hermes
 ```
 
-From a checkout:
+If running from a GitHub checkout:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
@@ -463,20 +463,21 @@ This is why the project supports both reflection/distillation and deterministic 
 
 ## Setup checklist for agents
 
-If a human hands this repository to an agent, the agent should be able to bootstrap safely with this checklist:
+If a human asks an agent to install or migrate Local Memory, use the published package by default. Clone GitHub only for development or unreleased debugging.
 
-1. **Inspect repository state**
+1. **Install the published CLI**
 
    ```bash
-   git status --short
-   PYTHONPATH=src pytest -q
-   ruff check .
+   uv tool install hermes-local-memory
+   # or
+   pipx install hermes-local-memory
+   hermes-local-memory --help
    ```
 
 2. **Install the Hermes shim without switching providers**
 
    ```bash
-   PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
+   hermes-local-memory install-shim --hermes-home ~/.hermes
    ```
 
 3. **Create or choose a trial DB**
@@ -488,7 +489,7 @@ If a human hands this repository to an agent, the agent should be able to bootst
 4. **Import external memory only into the trial DB first**
 
    ```bash
-   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" import honcho-api \
+   hermes-local-memory --db "$LOCAL_MEMORY_DB" import honcho-api \
      --base-url http://localhost:8000/v3 \
      --workspace hermes \
      --identity-map ~/.hermes/local-memory-identity-map.json \
@@ -499,14 +500,14 @@ If a human hands this repository to an agent, the agent should be able to bootst
 5. **Review imported candidates and cards before judging context quality**
 
    ```bash
-   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" candidate-review-packet \
+   hermes-local-memory --db "$LOCAL_MEMORY_DB" candidate-review-packet \
      --peer alice \
      --observer bob \
      --source honcho-api-conclusion \
      --limit 100 \
      --json > /tmp/alice-candidates.json
 
-   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" card-review-packet \
+   hermes-local-memory --db "$LOCAL_MEMORY_DB" card-review-packet \
      --peer alice \
      --observer bob \
      --json > /tmp/alice-card.json
@@ -517,9 +518,9 @@ If a human hands this repository to an agent, the agent should be able to bootst
 6. **Inspect identity and context**
 
    ```bash
-   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" peers --json
-   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" aliases --json
-   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" context \
+   hermes-local-memory --db "$LOCAL_MEMORY_DB" peers --json
+   hermes-local-memory --db "$LOCAL_MEMORY_DB" aliases --json
+   hermes-local-memory --db "$LOCAL_MEMORY_DB" context \
      --peer alice \
      --observer bob \
      --query "memory quality"
@@ -535,6 +536,8 @@ If a human hands this repository to an agent, the agent should be able to bootst
    memory:
      provider: local_memory
    ```
+
+Development agents working from a checkout should run `PYTHONPATH=src python -m hermes_local_memory.cli ...` instead of `hermes-local-memory ...`.
 
 Full command reference: [docs/cli.md](docs/cli.md).
 
@@ -682,8 +685,14 @@ tests/
 
 ## Development
 
+Clone the repository before running development commands:
+
 ```bash
+git clone https://github.com/smarzola/hermes-local-memory.git
 cd hermes-local-memory
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
 PYTHONPATH=src pytest -q
 ruff check .
 PYTHONPATH=src python -m compileall -q src tests

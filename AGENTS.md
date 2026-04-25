@@ -55,7 +55,33 @@ Reflection should run before consolidation in scheduled maintenance. Candidate f
 
 ## Setup and verification for agents
 
-Start here:
+### Normal adoption path
+
+For human or agent setup, prefer the published package:
+
+```bash
+uv tool install hermes-local-memory
+# or
+pipx install hermes-local-memory
+hermes-local-memory --help
+```
+
+Install the Hermes shim without switching the active provider:
+
+```bash
+hermes-local-memory install-shim --hermes-home ~/.hermes
+```
+
+Use a trial DB before live migrations:
+
+```bash
+export LOCAL_MEMORY_DB=~/.hermes/memory/local_memory_trial.sqlite
+hermes-local-memory --db "$LOCAL_MEMORY_DB" peers --json
+```
+
+### Development path
+
+Only clone GitHub when editing this repository, testing unreleased changes, or debugging from source:
 
 ```bash
 git status --short
@@ -70,17 +96,10 @@ If package metadata changed, also run:
 uv build
 ```
 
-Install the Hermes shim without switching the active provider:
+From a checkout, run the shim installer as:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
-```
-
-Use a trial DB before live migrations:
-
-```bash
-export LOCAL_MEMORY_DB=~/.hermes/memory/local_memory_trial.sqlite
-PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" peers --json
 ```
 
 Full setup/adoption instructions live in `docs/setup.md`. Release steps live in `docs/release.md`.

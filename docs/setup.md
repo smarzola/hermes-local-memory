@@ -11,15 +11,19 @@ The shim lets Hermes discover the provider. Installing the shim does **not** swi
 
 ## Install options
 
-### Option A: install from PyPI
+### Recommended: install the published package
 
-After a package release is published:
+For normal human or agent use, install the published PyPI package as a CLI tool:
 
 ```bash
 uv tool install hermes-local-memory
 # or
 pipx install hermes-local-memory
-# or inside a virtualenv
+```
+
+If you are already inside a virtualenv:
+
+```bash
 pip install hermes-local-memory
 ```
 
@@ -29,17 +33,9 @@ Then verify the CLI:
 hermes-local-memory --help
 ```
 
-### Option B: install from GitHub
+### Development path: clone from GitHub
 
-Before a PyPI release, or when testing a specific commit:
-
-```bash
-uv tool install git+https://github.com/smarzola/hermes-local-memory.git
-# or
-pipx install git+https://github.com/smarzola/hermes-local-memory.git
-```
-
-### Option C: run from a checkout
+Use a checkout only when developing the package, testing unreleased changes, or debugging from source:
 
 ```bash
 git clone https://github.com/smarzola/hermes-local-memory.git
@@ -47,11 +43,11 @@ cd hermes-local-memory
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-pytest
+PYTHONPATH=src pytest -q
 ruff check .
 ```
 
-Without installing the package, commands can be run with:
+Run commands from a checkout with:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli --help
@@ -59,13 +55,13 @@ PYTHONPATH=src python -m hermes_local_memory.cli --help
 
 ## Install the Hermes plugin shim
 
-From an installed package:
+If installed from PyPI/pipx/uv:
 
 ```bash
 hermes-local-memory install-shim --hermes-home ~/.hermes
 ```
 
-From a checkout:
+If running from a GitHub checkout:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
@@ -220,11 +216,11 @@ Then restart Hermes or start a new session.
 
 ## Agent handoff checklist
 
-If a human hands this repo to an agent, the agent should:
+If a human asks an agent to set up Local Memory, the agent should:
 
-1. run `git status --short` and inspect the active branch;
-2. run `PYTHONPATH=src pytest -q` and `ruff check .`;
-3. install the shim without switching providers;
+1. install the published package with `uv tool install hermes-local-memory` or `pipx install hermes-local-memory`;
+2. verify `hermes-local-memory --help` works;
+3. install the shim with `hermes-local-memory install-shim --hermes-home ~/.hermes` without switching providers;
 4. choose a trial DB;
 5. import existing memory with `--dry-run` first;
 6. apply only after reviewing counts/warnings;
@@ -232,6 +228,8 @@ If a human hands this repo to an agent, the agent should:
 8. run peer/candidate/card review packets for imported data;
 9. schedule report-only maintenance before any autonomous apply;
 10. switch `memory.provider` only after explicit human approval.
+
+Agents should clone the GitHub repo and run `PYTHONPATH=src ...` commands only when they are developing the package or testing unreleased changes.
 
 ## Rollback basics
 

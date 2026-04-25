@@ -115,7 +115,13 @@ Local Memory can generate a tiny Hermes user-plugin shim:
 $HERMES_HOME/plugins/local_memory/__init__.py
 ```
 
-Install it from a checkout:
+Install it from the published package:
+
+```bash
+hermes-local-memory install-shim --hermes-home ~/.hermes
+```
+
+From a GitHub checkout used for development or unreleased debugging:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
