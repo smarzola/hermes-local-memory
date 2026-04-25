@@ -120,6 +120,21 @@ PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.h
 
 The shim calls Hermes' `register_memory_provider` hook and instantiates `LocalMemoryProvider`.
 
+Safe validation path without switching the live provider:
+
+```bash
+# Confirm the shim can be discovered and loaded by Hermes' plugin loader.
+PYTHONPATH="/path/to/hermes-agent:/path/to/hermes-local-memory/src" python - <<'PY'
+from plugins.memory import discover_memory_providers, load_memory_provider
+assert any(p[0] == 'local_memory' and p[2] for p in discover_memory_providers())
+provider = load_memory_provider('local_memory')
+assert provider is not None
+print(provider.name)
+PY
+```
+
+This does not change `memory.provider` and therefore does not replace the active memory backend.
+
 ### Honcho importer
 
 The importer should preserve raw history and migrate useful derived artifacts:
