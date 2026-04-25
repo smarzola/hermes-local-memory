@@ -52,10 +52,10 @@ def create_honcho_fixture(path: Path) -> None:
             values (?, ?, ?, ?)
             """,
             (
-                "Ambrogio",
+                "Bob",
                 "hermes",
                 json.dumps({"kind": "ai"}),
-                json.dumps({"151011988_peer_card": ["Simone prefers local-first memory."]}),
+                json.dumps({"1001_peer_card": ["Alice prefers local-first memory."]}),
             ),
         )
         conn.execute(
@@ -64,18 +64,18 @@ def create_honcho_fixture(path: Path) -> None:
             values (?, ?, ?, ?)
             """,
             (
-                "151011988",
+                "1001",
                 "hermes",
-                json.dumps({"telegram_user_id": "151011988"}),
-                json.dumps({"peer_card": ["Name: Simone"]}),
+                json.dumps({"telegram_user_id": "1001"}),
+                json.dumps({"peer_card": ["Name: Alice"]}),
             ),
         )
         conn.execute(
             "insert into sessions(name, workspace_name, metadata) values (?, ?, ?)",
             (
-                "agent-main-telegram-dm-151011988",
+                "agent-main-telegram-dm-1001",
                 "hermes",
-                json.dumps({"title": "Telegram DM with Simone"}),
+                json.dumps({"title": "Telegram DM with Alice"}),
             ),
         )
         conn.execute(
@@ -83,14 +83,14 @@ def create_honcho_fixture(path: Path) -> None:
             insert into session_peers(session_name, peer_name, workspace_name, left_at)
             values (?, ?, ?, null)
             """,
-            ("agent-main-telegram-dm-151011988", "151011988", "hermes"),
+            ("agent-main-telegram-dm-1001", "1001", "hermes"),
         )
         conn.execute(
             """
             insert into session_peers(session_name, peer_name, workspace_name, left_at)
             values (?, ?, ?, null)
             """,
-            ("agent-main-telegram-dm-151011988", "Ambrogio", "hermes"),
+            ("agent-main-telegram-dm-1001", "Bob", "hermes"),
         )
         conn.execute(
             """
@@ -101,8 +101,8 @@ def create_honcho_fixture(path: Path) -> None:
             """,
             (
                 1,
-                "agent-main-telegram-dm-151011988",
-                "151011988",
+                "agent-main-telegram-dm-1001",
+                "1001",
                 "hermes",
                 "Remember that I prefer local-first memory.",
                 "2026-04-25T08:00:00Z",
@@ -118,8 +118,8 @@ def create_honcho_fixture(path: Path) -> None:
             """,
             (
                 2,
-                "agent-main-telegram-dm-151011988",
-                "Ambrogio",
+                "agent-main-telegram-dm-1001",
+                "Bob",
                 "hermes",
                 "Got it.",
                 "2026-04-25T08:00:01Z",
@@ -131,10 +131,10 @@ def create_honcho_fixture(path: Path) -> None:
             (
                 "doc-1",
                 "hermes",
-                "Simone strongly prefers seamless migrations.",
+                "Alice strongly prefers seamless migrations.",
                 json.dumps({
-                    "observer": "Ambrogio",
-                    "observed": "151011988",
+                    "observer": "Bob",
+                    "observed": "1001",
                     "type": "observation",
                 }),
             ),
@@ -161,9 +161,9 @@ def test_plan_honcho_import_dry_run_counts_and_mappings(tmp_path: Path) -> None:
     }
     assert plan["writes"] == []
     assert not target_db.exists()
-    assert {peer["id"] for peer in plan["peers"]} == {"honcho-151011988", "honcho-ambrogio"}
-    assert {alias["alias"] for alias in plan["aliases"]} == {"honcho:151011988", "honcho:Ambrogio"}
-    assert plan["sessions"][0]["id"] == "honcho-agent-main-telegram-dm-151011988"
+    assert {peer["id"] for peer in plan["peers"]} == {"honcho-1001", "honcho-bob"}
+    assert {alias["alias"] for alias in plan["aliases"]} == {"honcho:1001", "honcho:Bob"}
+    assert plan["sessions"][0]["id"] == "honcho-agent-main-telegram-dm-1001"
     assert plan["messages"][0]["source_message_id"] == "honcho:1"
     assert plan["facts"][0]["status"] == "candidate"
 

@@ -10,33 +10,33 @@ from hermes_local_memory.store import LocalMemoryStore
 def seed_store(db_path: Path) -> LocalMemoryStore:
     store = LocalMemoryStore(db_path)
     store.initialize()
-    store.upsert_peer("simone", display_name="Simone", kind="human")
-    store.upsert_peer("ambrogio", display_name="Ambrogio", kind="ai")
-    store.set_alias("telegram:151011988", peer_id="simone", source="telegram", verified=True)
+    store.upsert_peer("alice", display_name="Alice", kind="human")
+    store.upsert_peer("bob", display_name="Bob", kind="ai")
+    store.set_alias("telegram:1001", peer_id="alice", source="telegram", verified=True)
     store.upsert_session(
-        "telegram-dm-151011988",
+        "telegram-dm-1001",
         profile_id="default",
         platform="telegram",
-        external_id="151011988",
-        title="Telegram DM with Simone",
+        external_id="1001",
+        title="Telegram DM with Alice",
     )
     msg = store.add_message(
-        session_id="telegram-dm-151011988",
-        peer_id="simone",
+        session_id="telegram-dm-1001",
+        peer_id="alice",
         role="user",
         content="I prefer inspectable local memory.",
     )
     store.add_fact(
-        subject_peer_id="simone",
-        observer_peer_id="ambrogio",
-        content="Simone prefers inspectable local memory.",
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        content="Alice prefers inspectable local memory.",
         kind="preference",
         evidence_message_ids=[msg["id"]],
     )
     store.set_card(
-        subject_peer_id="simone",
-        observer_peer_id="ambrogio",
-        items=["Name: Simone"],
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        items=["Name: Alice"],
     )
     return store
 
@@ -53,8 +53,9 @@ def test_cli_lists_peers_as_json(tmp_path: Path, capsys) -> None:  # noqa: ANN00
     output = run_cli(["--db", str(db_path), "peers", "--json"], capsys)
     rows = json.loads(output)
 
-    assert {row["id"] for row in rows} == {"simone", "ambrogio"}
-    assert rows[0]["display_name"] == "Ambrogio"
+    assert {row["id"] for row in rows} == {"alice", "bob"}
+    display_names_by_id = {row["id"]: row["display_name"] for row in rows}
+    assert display_names_by_id == {"alice": "Alice", "bob": "Bob"}
 
 
 def test_cli_lists_aliases_and_sessions(tmp_path: Path, capsys) -> None:  # noqa: ANN001
@@ -66,16 +67,16 @@ def test_cli_lists_aliases_and_sessions(tmp_path: Path, capsys) -> None:  # noqa
 
     assert aliases == [
         {
-            "alias": "telegram:151011988",
-            "peer_id": "simone",
+            "alias": "telegram:1001",
+            "peer_id": "alice",
             "source": "telegram",
             "confidence": 1.0,
             "verified": 1,
             "created_at": aliases[0]["created_at"],
         }
     ]
-    assert sessions[0]["id"] == "telegram-dm-151011988"
-    assert sessions[0]["title"] == "Telegram DM with Simone"
+    assert sessions[0]["id"] == "telegram-dm-1001"
+    assert sessions[0]["title"] == "Telegram DM with Alice"
 
 
 def test_cli_lists_facts_for_peer_alias(tmp_path: Path, capsys) -> None:  # noqa: ANN001
@@ -83,13 +84,13 @@ def test_cli_lists_facts_for_peer_alias(tmp_path: Path, capsys) -> None:  # noqa
     seed_store(db_path)
 
     output = run_cli(
-        ["--db", str(db_path), "facts", "--peer", "telegram:151011988", "--json"],
+        ["--db", str(db_path), "facts", "--peer", "telegram:1001", "--json"],
         capsys,
     )
     rows = json.loads(output)
 
     assert len(rows) == 1
-    assert rows[0]["subject_peer_id"] == "simone"
+    assert rows[0]["subject_peer_id"] == "alice"
     assert rows[0]["evidence_message_ids"] == [1]
 
 
@@ -98,7 +99,7 @@ def test_cli_searches_and_builds_context(tmp_path: Path, capsys) -> None:  # noq
     seed_store(db_path)
 
     search_output = run_cli(
-        ["--db", str(db_path), "search", "inspectable memory", "--peer", "simone"],
+        ["--db", str(db_path), "search", "inspectable memory", "--peer", "alice"],
         capsys,
     )
     context_output = run_cli(
@@ -107,17 +108,17 @@ def test_cli_searches_and_builds_context(tmp_path: Path, capsys) -> None:  # noq
             str(db_path),
             "context",
             "--peer",
-            "simone",
+            "alice",
             "--observer",
-            "ambrogio",
+            "bob",
             "--query",
             "inspectable memory",
         ],
         capsys,
     )
 
-    assert "Simone prefers inspectable local memory." in search_output
+    assert "Alice prefers inspectable local memory." in search_output
     assert "# Local Memory" in context_output
     assert "## Compact peer card" in context_output
-    assert "Name: Simone" in context_output
+    assert "Name: Alice" in context_output
     assert "source=manual" in context_output

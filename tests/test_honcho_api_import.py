@@ -36,8 +36,8 @@ class FakeHonchoTransport:
         if path == "/v3/workspaces/hermes/peers/list":
             return _page(
                 [
-                    {"id": "Ambrogio", "metadata": {"kind": "ai"}},
-                    {"id": "151011988", "metadata": {"telegram_user_id": "151011988"}},
+                    {"id": "Bob", "metadata": {"kind": "ai"}},
+                    {"id": "1001", "metadata": {"telegram_user_id": "1001"}},
                     {"id": "user-default-20260419_182008_26ad7f", "metadata": {}},
                 ],
                 page=page,
@@ -47,34 +47,34 @@ class FakeHonchoTransport:
             return _page(
                 [
                     {
-                        "id": "agent-main-telegram-dm-151011988",
-                        "metadata": {"title": "Telegram DM with Simone"},
+                        "id": "agent-main-telegram-dm-1001",
+                        "metadata": {"title": "Telegram DM with Alice"},
                     }
                 ],
                 page=page,
                 size=size,
             )
-        if path == "/v3/workspaces/hermes/sessions/agent-main-telegram-dm-151011988/peers":
+        if path == "/v3/workspaces/hermes/sessions/agent-main-telegram-dm-1001/peers":
             return _page(
-                [{"id": "151011988"}, {"id": "Ambrogio"}],
+                [{"id": "1001"}, {"id": "Bob"}],
                 page=page,
                 size=size,
             )
-        if path == "/v3/workspaces/hermes/sessions/agent-main-telegram-dm-151011988/messages/list":
+        if path == "/v3/workspaces/hermes/sessions/agent-main-telegram-dm-1001/messages/list":
             return _page(
                 [
                     {
                         "id": "msg-user-1",
-                        "session_id": "agent-main-telegram-dm-151011988",
-                        "peer_id": "151011988",
+                        "session_id": "agent-main-telegram-dm-1001",
+                        "peer_id": "1001",
                         "content": "Remember that I prefer local-first memory.",
                         "metadata": {"source_message_id": "tg-1"},
                         "created_at": "2026-04-25T08:00:00Z",
                     },
                     {
                         "id": "msg-ai-1",
-                        "session_id": "agent-main-telegram-dm-151011988",
-                        "peer_id": "Ambrogio",
+                        "session_id": "agent-main-telegram-dm-1001",
+                        "peer_id": "Bob",
                         "content": "Got it.",
                         "metadata": {"source_message_id": "tg-2"},
                         "created_at": "2026-04-25T08:00:01Z",
@@ -83,16 +83,16 @@ class FakeHonchoTransport:
                 page=page,
                 size=size,
             )
-        if path == "/v3/workspaces/hermes/peers/Ambrogio/card":
-            if query.get("target") == ["151011988"]:
-                return {"peer_card": ["Simone prefers local-first memory."]}
+        if path == "/v3/workspaces/hermes/peers/Bob/card":
+            if query.get("target") == ["1001"]:
+                return {"peer_card": ["Alice prefers local-first memory."]}
             if "target" in query:
                 return {"peer_card": None}
-            return {"peer_card": ["Assistant name: Ambrogio"]}
-        if path == "/v3/workspaces/hermes/peers/151011988/card":
+            return {"peer_card": ["Assistant name: Bob"]}
+        if path == "/v3/workspaces/hermes/peers/1001/card":
             if "target" in query:
                 return {"peer_card": None}
-            return {"peer_card": ["Name: Simone"]}
+            return {"peer_card": ["Name: Alice"]}
         if path == "/v3/workspaces/hermes/peers/user-default-20260419_182008_26ad7f/card":
             return {"peer_card": None}
         if path == "/v3/workspaces/hermes/conclusions/list":
@@ -100,9 +100,9 @@ class FakeHonchoTransport:
                 [
                     {
                         "id": "conclusion-1",
-                        "content": "Simone strongly prefers seamless migrations.",
-                        "observer_id": "Ambrogio",
-                        "observed_id": "151011988",
+                        "content": "Alice strongly prefers seamless migrations.",
+                        "observer_id": "Bob",
+                        "observed_id": "1001",
                         "session_id": None,
                         "created_at": "2026-04-25T08:01:00Z",
                     }
@@ -165,8 +165,8 @@ def test_plan_honcho_export_import_from_api_export_does_not_write(tmp_path: Path
     assert plan["writes"] == []
     assert not target_db.exists()
     assert {peer["id"] for peer in plan["peers"]} == {
-        "honcho-151011988",
-        "honcho-ambrogio",
+        "honcho-1001",
+        "honcho-bob",
         "honcho-user-default-20260419_182008_26ad7f",
     }
     assert plan["messages"][0]["source_message_id"] == "honcho-api:msg-user-1"
@@ -178,14 +178,14 @@ def test_identity_map_merges_honcho_peers_and_preserves_aliases(tmp_path: Path) 
     export = export_honcho_api(client, workspace="hermes")
     identity_map = {
         "peers": {
-            "honcho:151011988": "simone",
-            "honcho:Ambrogio": "ambrogio",
+            "honcho:1001": "alice",
+            "honcho:Bob": "bob",
         },
         "patterns": {
-            "honcho:user-default*": "simone"
+            "honcho:user-default*": "alice"
         },
-        "display_names": {"simone": "Simone", "ambrogio": "Ambrogio"},
-        "kinds": {"simone": "human", "ambrogio": "ai"},
+        "display_names": {"alice": "Alice", "bob": "Bob"},
+        "kinds": {"alice": "human", "bob": "ai"},
     }
 
     plan = plan_honcho_export_import(
@@ -195,15 +195,15 @@ def test_identity_map_merges_honcho_peers_and_preserves_aliases(tmp_path: Path) 
     )
 
     assert plan["counts"]["peers"] == 2
-    assert {peer["id"] for peer in plan["peers"]} == {"simone", "ambrogio"}
+    assert {peer["id"] for peer in plan["peers"]} == {"alice", "bob"}
     assert {alias["alias"] for alias in plan["aliases"]} == {
-        "honcho:151011988",
-        "honcho:Ambrogio",
+        "honcho:1001",
+        "honcho:Bob",
         "honcho:user-default-20260419_182008_26ad7f",
     }
-    assert all(message["peer_id"] in {"simone", "ambrogio"} for message in plan["messages"])
-    assert {card["subject_peer_id"] for card in plan["cards"]} == {"simone", "ambrogio"}
-    assert plan["facts"][0]["subject_peer_id"] == "simone"
+    assert all(message["peer_id"] in {"alice", "bob"} for message in plan["messages"])
+    assert {card["subject_peer_id"] for card in plan["cards"]} == {"alice", "bob"}
+    assert plan["facts"][0]["subject_peer_id"] == "alice"
 
 
 def test_identity_map_merges_duplicate_cards_in_plan(tmp_path: Path) -> None:
@@ -211,32 +211,32 @@ def test_identity_map_merges_duplicate_cards_in_plan(tmp_path: Path) -> None:
         "format": "hermes-local-memory.honcho-export.v1",
         "source": {"kind": "honcho-api", "workspace": "hermes"},
         "peers": [
-            {"id": "151011988", "metadata": {}},
-            {"id": "Simone", "metadata": {}},
-            {"id": "Ambrogio", "metadata": {"kind": "ai"}},
+            {"id": "1001", "metadata": {}},
+            {"id": "Alice", "metadata": {}},
+            {"id": "Bob", "metadata": {"kind": "ai"}},
         ],
         "sessions": [],
         "session_peers": [],
         "messages": [],
         "cards": [
             {
-                "target_id": "151011988",
-                "observer_id": "Ambrogio",
-                "peer_card": ["Name: Simone", "Prefers local memory"],
+                "target_id": "1001",
+                "observer_id": "Bob",
+                "peer_card": ["Name: Alice", "Prefers local memory"],
             },
             {
-                "target_id": "Simone",
-                "observer_id": "Ambrogio",
-                "peer_card": ["Name: Simone", "Lives in Stockholm"],
+                "target_id": "Alice",
+                "observer_id": "Bob",
+                "peer_card": ["Name: Alice", "Lives in Example City"],
             },
         ],
         "conclusions": [],
     }
     identity_map = {
         "peers": {
-            "honcho:151011988": "simone",
-            "honcho:Simone": "simone",
-            "honcho:Ambrogio": "ambrogio",
+            "honcho:1001": "alice",
+            "honcho:Alice": "alice",
+            "honcho:Bob": "bob",
         }
     }
 
@@ -249,11 +249,11 @@ def test_identity_map_merges_duplicate_cards_in_plan(tmp_path: Path) -> None:
     assert plan["counts"]["cards"] == 1
     assert plan["cards"] == [
         {
-            "subject_peer_id": "simone",
-            "observer_peer_id": "ambrogio",
+            "subject_peer_id": "alice",
+            "observer_peer_id": "bob",
             "scope": "global",
             "scope_id": "",
-            "items": ["Name: Simone", "Prefers local memory", "Lives in Stockholm"],
+            "items": ["Name: Alice", "Prefers local memory", "Lives in Example City"],
             "source": "honcho-api-card",
         }
     ]
@@ -264,9 +264,9 @@ def test_load_identity_map_accepts_json_file(tmp_path: Path) -> None:
     path.write_text(
         json.dumps(
             {
-                "peers": {"honcho:151011988": "simone"},
-                "display_names": {"simone": "Simone"},
-                "kinds": {"simone": "human"},
+                "peers": {"honcho:1001": "alice"},
+                "display_names": {"alice": "Alice"},
+                "kinds": {"alice": "human"},
             }
         ),
         encoding="utf-8",
@@ -274,10 +274,10 @@ def test_load_identity_map_accepts_json_file(tmp_path: Path) -> None:
 
     loaded = load_identity_map(path)
 
-    assert loaded["peers"] == {"honcho:151011988": "simone"}
+    assert loaded["peers"] == {"honcho:1001": "alice"}
     assert loaded["patterns"] == {}
-    assert loaded["display_names"] == {"simone": "Simone"}
-    assert loaded["kinds"] == {"simone": "human"}
+    assert loaded["display_names"] == {"alice": "Alice"}
+    assert loaded["kinds"] == {"alice": "human"}
 
 
 def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> None:
@@ -335,12 +335,12 @@ def _write_identity_map(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "peers": {
-                    "honcho:151011988": "simone",
-                    "honcho:Ambrogio": "ambrogio",
+                    "honcho:1001": "alice",
+                    "honcho:Bob": "bob",
                 },
-                "patterns": {"honcho:user-default*": "simone"},
-                "display_names": {"simone": "Simone", "ambrogio": "Ambrogio"},
-                "kinds": {"simone": "human", "ambrogio": "ai"},
+                "patterns": {"honcho:user-default*": "alice"},
+                "display_names": {"alice": "Alice", "bob": "Bob"},
+                "kinds": {"alice": "human", "bob": "ai"},
             }
         ),
         encoding="utf-8",
@@ -387,7 +387,7 @@ def test_honcho_api_import_cli_dry_run_prints_json_without_writing(
     assert output["source"]["kind"] == "honcho-api"
     assert output["counts"]["peers"] == 2
     assert output["counts"]["messages"] == 2
-    assert {peer["id"] for peer in output["peers"]} == {"simone", "ambrogio"}
+    assert {peer["id"] for peer in output["peers"]} == {"alice", "bob"}
     assert not target_db.exists()
 
 
