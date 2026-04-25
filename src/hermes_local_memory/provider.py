@@ -197,16 +197,30 @@ class LocalMemoryProvider:
         agent_identity = str(kwargs.get("agent_identity") or "assistant")
         session_title = kwargs.get("session_title")
 
-        self.user_peer_id = self._sanitize_peer_id(f"{self.platform}-{raw_user_id}")
-        self.assistant_peer_id = self._sanitize_peer_id(agent_identity)
-        self.store.upsert_peer(self.user_peer_id, display_name=raw_user_id, kind="human")
-        self.store.upsert_peer(self.assistant_peer_id, display_name=agent_identity, kind="ai")
-        self.store.set_alias(
-            f"{self.platform}:{raw_user_id}",
-            peer_id=self.user_peer_id,
-            source=self.platform,
-            verified=True,
+        user_alias = f"{self.platform}:{raw_user_id}"
+        existing_user_peer = self.store.resolve_peer(user_alias)
+        self.user_peer_id = (
+            existing_user_peer["id"]
+            if existing_user_peer is not None
+            else self._sanitize_peer_id(f"{self.platform}-{raw_user_id}")
         )
+        existing_assistant_peer = self.store.resolve_peer(agent_identity)
+        self.assistant_peer_id = (
+            existing_assistant_peer["id"]
+            if existing_assistant_peer is not None
+            else self._sanitize_peer_id(agent_identity)
+        )
+        if existing_user_peer is None:
+            self.store.upsert_peer(self.user_peer_id, display_name=raw_user_id, kind="human")
+        if existing_assistant_peer is None:
+            self.store.upsert_peer(self.assistant_peer_id, display_name=agent_identity, kind="ai")
+        if existing_user_peer is None:
+            self.store.set_alias(
+                user_alias,
+                peer_id=self.user_peer_id,
+                source=self.platform,
+                verified=True,
+            )
         self.store.set_alias("user", peer_id=self.user_peer_id, source="builtin", verified=True)
         self.store.set_alias("ai", peer_id=self.assistant_peer_id, source="builtin", verified=True)
         self.store.upsert_session(

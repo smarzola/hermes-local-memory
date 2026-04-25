@@ -36,6 +36,66 @@ def test_provider_initializes_profile_scoped_database_and_identity_alias(tmp_pat
     assert peer["id"] == "telegram-151011988"
 
 
+def test_provider_reuses_existing_verified_alias_instead_of_overwriting_it(tmp_path: Path) -> None:
+    db_path = tmp_path / "memory" / "local_memory.sqlite"
+    seeded = LocalMemoryProvider(db_path=db_path)
+    seeded.initialize(
+        "migration-session",
+        hermes_home=str(tmp_path),
+        platform="migration",
+        user_id="seed",
+        agent_identity="ambrogio",
+    )
+    assert seeded.store is not None
+    seeded.store.upsert_peer("simone", display_name="Simone", kind="human")
+    seeded.store.set_alias(
+        "telegram:151011988",
+        peer_id="simone",
+        source="migration",
+        verified=True,
+    )
+
+    provider = make_provider(tmp_path)
+
+    assert provider.user_peer_id == "simone"
+    peer = provider.store.resolve_peer("telegram:151011988")
+    assert peer is not None
+    assert peer["id"] == "simone"
+    assert provider.store.resolve_peer("telegram-151011988") is None
+
+
+def test_provider_reuses_existing_agent_identity_alias_instead_of_creating_default_peer(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "memory" / "local_memory.sqlite"
+    seeded = LocalMemoryProvider(db_path=db_path)
+    seeded.initialize(
+        "migration-session",
+        hermes_home=str(tmp_path),
+        platform="migration",
+        user_id="seed",
+        agent_identity="ambrogio",
+    )
+    assert seeded.store is not None
+    seeded.store.upsert_peer("ambrogio", display_name="Ambrogio", kind="ai")
+    seeded.store.set_alias("default", peer_id="ambrogio", source="profile", verified=True)
+
+    provider = LocalMemoryProvider(db_path=db_path)
+    provider.initialize(
+        "session-1",
+        hermes_home=str(tmp_path),
+        platform="telegram",
+        user_id="151011988",
+        agent_identity="default",
+    )
+
+    assert provider.assistant_peer_id == "ambrogio"
+    peer = provider.store.resolve_peer("default")
+    assert peer is not None
+    assert peer["id"] == "ambrogio"
+    assert provider.store.resolve_peer("ai")["id"] == "ambrogio"
+
+
 def test_provider_exposes_memory_tools_and_can_write_profile_card(tmp_path: Path) -> None:
     provider = make_provider(tmp_path)
 
