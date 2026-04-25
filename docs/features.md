@@ -180,7 +180,8 @@ Consolidation is explicit, deterministic, and inspectable. It currently:
 2. supersedes candidate facts that duplicate an existing card line or active fact
 3. optionally promotes unique candidate facts
 4. proposes card additions from active facts and promoted candidates
-5. applies only with `--apply` or `memory_consolidate({"apply": true})`
+5. can run for one pair or all subject/observer pairs with cards/facts
+6. applies only with `--apply` or `memory_consolidate({"apply": true})`
 
 CLI examples:
 
@@ -197,6 +198,11 @@ hermes-local-memory --db memory.sqlite consolidate \
   --observer bob \
   --promote-candidates \
   --apply \
+  --json
+
+hermes-local-memory --db memory.sqlite maintenance \
+  --promote-candidates \
+  --dry-run \
   --json
 ```
 

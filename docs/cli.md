@@ -267,6 +267,28 @@ hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --apply
 
 Patch application validates peer/fact IDs, never deletes raw messages, and changes fact lifecycle with status updates (`active`, `superseded`, `retracted`).
 
+### Run all-pairs maintenance
+
+Scheduled jobs usually should not target only one pair. Use `maintenance` to plan/apply deterministic consolidation across every subject/observer pair with cards or facts:
+
+```bash
+hermes-local-memory --db memory.sqlite maintenance \
+  --promote-candidates \
+  --dry-run \
+  --json
+```
+
+Apply mode runs the same deterministic consolidation for all discovered pairs:
+
+```bash
+hermes-local-memory --db memory.sqlite maintenance \
+  --promote-candidates \
+  --apply \
+  --json
+```
+
+Hermes cron jobs can use this all-pairs result as the first pass, then reason per pair about what should be applied, skipped, or escalated.
+
 ### Plan a Honcho SQLite fixture import
 
 The SQLite importer is a fallback for tests, fixtures, and local forensic work where a Honcho-shaped SQLite export is available:
@@ -341,36 +363,35 @@ Full replacement is intentional: it makes card repair auditable and avoids hidde
 
 This package intentionally does not embed its own scheduler. Regular memory maintenance should be orchestrated by Hermes' scheduling/cron layer, because Hermes owns model calls, tools, policy, and judgment.
 
-Recommended primary pattern: autonomous but auditable.
+Recommended primary pattern: autonomous but auditable across all pairs.
 
-1. schedule a Hermes job with clear scope, database path, subject/observer peers, and permission boundaries
-2. have the job inspect current card, active facts, candidate facts, aliases, and rendered context
-3. have the job run a consolidation dry-run first
-4. allow the job to apply narrow, validated changes when the plan is clearly safe
-5. require the job to stop and report when the plan is large, noisy, ambiguous, or mostly imported meta-facts
-6. require an after-action summary listing changes, skipped items, and remaining concerns
+1. schedule a Hermes job with clear database path and permission boundaries
+2. have the job discover every subject/observer pair with cards or facts
+3. have the job inspect each pair's card, active facts, candidate facts, aliases, and rendered context
+4. have the job run all-pairs maintenance dry-run first
+5. allow the job to apply narrow, validated changes for pairs whose plans are clearly safe
+6. require the job to skip/report pairs whose plans are large, noisy, ambiguous, identity-confused, or mostly imported meta-facts
+7. require an after-action summary listing changed, skipped, and escalated pairs
 
 Example autonomous scheduled job prompt:
 
 ```text
 Run a Hermes Local Memory maintenance job.
 Repository: /path/to/hermes-local-memory
-Database: ~/.hermes/memory/local_memory_trial_mapped.sqlite
-Subject: alice
-Observer: bob
+Database: ~/.hermes/memory/local_memory.sqlite
 
-Use Hermes Agent reasoning to make the maintenance decision. Use Local Memory as the auditable substrate.
-Inspect peers, aliases, cards, active facts, candidate facts, and rendered context.
-Run consolidation with --dry-run first.
-If the proposed changes are small, coherent, non-duplicative, and clearly supported by the candidate facts/card, apply them.
-If the result is noisy, large, ambiguous, identity-confused, or mostly imported Honcho meta-facts, do not apply.
-Never modify raw messages. Never switch live Hermes provider config. Report exactly what changed or why nothing changed.
+Use Hermes Agent reasoning to make maintenance decisions. Use Local Memory as the auditable substrate.
+Inspect all subject/observer pairs with cards or facts.
+Run all-pairs maintenance with --dry-run first.
+For each pair, apply only narrow, coherent, non-duplicative changes clearly supported by facts/cards and compatible with that pair's identity.
+If a pair is noisy, large, ambiguous, identity-confused, or mostly imported Honcho meta-facts, skip that pair.
+Never modify raw messages. Never switch live Hermes provider config. Report exactly what changed, skipped, and escalated for each pair.
 ```
 
 Prudent/report-only variant for new deployments, risky imports, or cautious operators:
 
 ```text
-Run the same Hermes Local Memory maintenance job, but do not apply changes. Produce only a dry-run report with counts, top proposed card additions, top promotions/supersedes, and a recommendation.
+Run the same all-pairs Hermes Local Memory maintenance job, but do not apply changes. Produce only a dry-run report with pair counts, top proposed card additions, top promotions/supersedes, skipped pairs, and recommendations.
 ```
 
 Both patterns keep scheduling and intelligence in Hermes while Local Memory remains local, deterministic, inspectable, and patch-oriented.

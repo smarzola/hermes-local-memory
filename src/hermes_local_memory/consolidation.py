@@ -113,6 +113,60 @@ def build_consolidation_plan(
     }
 
 
+def build_maintenance_plan(
+    store: LocalMemoryStore,
+    *,
+    promote_candidates: bool = False,
+    apply: bool = False,
+    limit: int = 500,
+) -> dict[str, Any]:
+    """Preview or apply consolidation for every subject/observer pair with facts/cards."""
+
+    pairs = _consolidation_pairs(store)
+    pair_plans = [
+        build_consolidation_plan(
+            store,
+            subject_peer_id=subject,
+            observer_peer_id=observer,
+            promote_candidates=promote_candidates,
+            apply=apply,
+            limit=limit,
+        )
+        for subject, observer in pairs
+    ]
+    counts = {
+        "pairs": len(pair_plans),
+        "candidate_promotions": sum(
+            plan["counts"]["candidate_promotions"] for plan in pair_plans
+        ),
+        "candidate_supersedes": sum(
+            plan["counts"]["candidate_supersedes"] for plan in pair_plans
+        ),
+        "card_additions": sum(plan["counts"]["card_additions"] for plan in pair_plans),
+    }
+    writes = {
+        "pairs_applied": 0,
+        "candidate_promotions": 0,
+        "candidate_supersedes": 0,
+        "cards_replaced": 0,
+    }
+    if apply:
+        for plan in pair_plans:
+            writes["pairs_applied"] += 1
+            writes["candidate_promotions"] += plan["writes"]["candidate_promotions"]
+            writes["candidate_supersedes"] += plan["writes"]["candidate_supersedes"]
+            if plan["writes"]["card_replaced"]:
+                writes["cards_replaced"] += 1
+
+    return {
+        "mode": "apply" if apply else "dry-run",
+        "promote_candidates": promote_candidates,
+        "counts": counts,
+        "pairs": pair_plans,
+        "writes": writes if apply else [],
+    }
+
+
 def build_consolidation_packet(
     store: LocalMemoryStore,
     *,
@@ -285,6 +339,16 @@ def _validate_fact_id(
 
 def _aliases_for_peer(store: LocalMemoryStore, peer_id: str) -> list[str]:
     return [row["alias"] for row in store.list_aliases() if row["peer_id"] == peer_id]
+
+
+def _consolidation_pairs(store: LocalMemoryStore) -> list[tuple[str, str]]:
+    pairs: set[tuple[str, str]] = set()
+    for status in ["active", "candidate"]:
+        for fact in store.list_facts(status=status, limit=100_000):
+            pairs.add((fact["subject_peer_id"], fact["observer_peer_id"]))
+    for card in store.list_cards(limit=100_000):
+        pairs.add((card["subject_peer_id"], card["observer_peer_id"]))
+    return sorted(pairs)
 
 
 def _fact_ref(fact: dict[str, Any], *, reason: str) -> dict[str, Any]:

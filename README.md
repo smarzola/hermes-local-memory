@@ -210,6 +210,15 @@ hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --dry-r
 hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --apply --json
 ```
 
+Run deterministic maintenance across all subject/observer pairs:
+
+```bash
+hermes-local-memory --db memory.sqlite maintenance \
+  --promote-candidates \
+  --dry-run \
+  --json
+```
+
 ---
 
 ## Migrating from Honcho
@@ -410,32 +419,32 @@ The package should stay simple and local; Hermes should own scheduling, model ca
 Recommended autonomous schedule:
 
 - run weekly or after a configurable number of new turns
-- inspect current card, active facts, candidate facts, and rendered context
-- use Hermes Agent to decide whether consolidation is useful
-- apply narrow, validated changes when the plan is clearly safe
-- deliver a concise summary of what changed and what was skipped
-- escalate to human review when the plan is large, noisy, ambiguous, or would rewrite the card heavily
+- discover every subject/observer pair with cards or facts
+- inspect each pair's current card, active facts, candidate facts, aliases, and rendered context
+- use Hermes Agent to decide which pairs need consolidation
+- apply narrow, validated changes per pair when the plan is clearly safe
+- deliver a concise all-pairs summary of what changed and what was skipped
+- escalate individual pairs to human review when their plan is large, noisy, ambiguous, or would rewrite the card heavily
 
 Example Hermes cron prompt:
 
 ```text
 Run a Hermes Local Memory maintenance job.
 Repository: /path/to/hermes-local-memory
-Database: ~/.hermes/memory/local_memory_trial_mapped.sqlite
-Subject: alice
-Observer: bob
+Database: ~/.hermes/memory/local_memory.sqlite
 
 Use Local Memory as the auditable substrate and use Hermes reasoning for judgment.
-Inspect peers, aliases, the current card, candidate facts, active facts, and rendered context.
-Run a consolidation dry-run first. If the result is small, coherent, and clearly safe, apply it.
-If it is noisy, large, ambiguous, or mostly imported Honcho meta-facts, do not apply; summarize what blocked automatic consolidation.
-Never modify raw messages. Never switch the live Hermes provider config. Report exactly what changed or why nothing changed.
+Inspect all subject/observer pairs with cards or facts.
+Run all-pairs maintenance with --dry-run first.
+For each pair, apply only narrow, coherent, non-duplicative changes that are clearly supported by facts/cards and fit the pair's identity.
+If a pair is noisy, large, ambiguous, identity-confused, or mostly imported Honcho meta-facts, skip that pair and summarize what blocked automatic consolidation.
+Never modify raw messages. Never switch the live Hermes provider config. Report exactly what changed, skipped, and escalated for each pair.
 ```
 
 A more prudent/report-only variant is also useful for new deployments or risky imports:
 
 ```text
-Run the same maintenance job, but do not apply changes. Produce only a dry-run report with counts, top proposed card additions, top promotions/supersedes, and a recommendation.
+Run the same all-pairs maintenance job, but do not apply changes. Produce only a dry-run report with pair counts, top proposed card additions, top promotions/supersedes, skipped pairs, and recommendations.
 ```
 
 This gives both modes:

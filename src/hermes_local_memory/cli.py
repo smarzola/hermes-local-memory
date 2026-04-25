@@ -9,6 +9,7 @@ from hermes_local_memory.consolidation import (
     apply_consolidation_patch,
     build_consolidation_packet,
     build_consolidation_plan,
+    build_maintenance_plan,
 )
 from hermes_local_memory.hermes_plugin import write_plugin_shim
 from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
@@ -117,6 +118,14 @@ def build_parser() -> argparse.ArgumentParser:
     patch_mode.add_argument("--dry-run", action="store_true", help="Validate only")
     patch_mode.add_argument("--apply", action="store_true", help="Apply patch")
     apply_patch.add_argument("--json", action="store_true", help="Print JSON")
+
+    maintenance = sub.add_parser("maintenance", help="Run consolidation across all pairs")
+    maintenance.add_argument("--promote-candidates", action="store_true")
+    maintenance.add_argument("--limit", type=int, default=500)
+    maintenance_mode = maintenance.add_mutually_exclusive_group()
+    maintenance_mode.add_argument("--dry-run", action="store_true")
+    maintenance_mode.add_argument("--apply", action="store_true")
+    maintenance.add_argument("--json", action="store_true", help="Print JSON")
 
     alias = sub.add_parser("alias", help="Mutate aliases explicitly")
     alias_sub = alias.add_subparsers(dest="alias_command", required=True)
@@ -335,6 +344,17 @@ def main(argv: list[str] | None = None) -> int:
         patch = json.loads(Path(args.patch_file).expanduser().read_text(encoding="utf-8"))
         result = apply_consolidation_patch(store, patch, apply=args.apply)
         _print_one(result, as_json=args.json)
+        return 0
+    if args.command == "maintenance":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        result = build_maintenance_plan(
+            store,
+            promote_candidates=args.promote_candidates,
+            apply=args.apply,
+            limit=args.limit,
+        )
+        _print_plan(result, as_json=args.json)
         return 0
     if args.command == "alias":
         peer_id = _resolve_required_peer_id(store, args.peer)

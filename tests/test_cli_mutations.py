@@ -263,3 +263,42 @@ def test_cli_consolidation_packet_and_apply_patch(tmp_path: Path, capsys) -> Non
     assert applied["mode"] == "apply"
     assert applied["writes"]["facts_promoted"] == 1
     assert store.get_fact("fact_candidate_patch")["status"] == "active"
+
+
+def test_cli_maintenance_runs_all_pairs(tmp_path: Path, capsys) -> None:  # noqa: ANN001
+    db_path = tmp_path / "memory.sqlite"
+    store = seed_store(db_path)
+    store.upsert_peer("carol", display_name="Carol", kind="human")
+    store.add_fact(
+        fact_id="fact_candidate_alice",
+        subject_peer_id="simone",
+        observer_peer_id="ambrogio",
+        content="Alice prefers all-pairs maintenance.",
+        kind="preference",
+        status="candidate",
+    )
+    store.add_fact(
+        fact_id="fact_candidate_carol",
+        subject_peer_id="carol",
+        observer_peer_id="ambrogio",
+        content="Carol prefers all-pairs maintenance.",
+        kind="preference",
+        status="candidate",
+    )
+
+    output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "maintenance",
+            "--promote-candidates",
+            "--dry-run",
+            "--json",
+        ],
+        capsys,
+    )
+
+    plan = json.loads(output)
+    assert plan["counts"]["pairs"] == 2
+    assert plan["counts"]["candidate_promotions"] == 2
+    assert store.get_fact("fact_candidate_alice")["status"] == "candidate"
