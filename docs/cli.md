@@ -9,6 +9,8 @@ The inspection commands in this document are read-only:
 - `peers`
 - `aliases`
 - `sessions`
+- `cards`
+- `messages`
 - `facts`
 - `search`
 - `context`
@@ -82,6 +84,26 @@ hermes-local-memory --db memory.sqlite sessions --json
 
 Shows conversation lanes and their metadata.
 
+### List cards
+
+```bash
+hermes-local-memory --db memory.sqlite cards
+hermes-local-memory --db memory.sqlite cards --peer simone
+hermes-local-memory --db memory.sqlite cards --peer telegram:151011988 --observer ambrogio --json
+```
+
+Cards are compact profile snapshots used for cheap context injection.
+
+### List messages
+
+```bash
+hermes-local-memory --db memory.sqlite messages
+hermes-local-memory --db memory.sqlite messages --session telegram-dm-151011988
+hermes-local-memory --db memory.sqlite messages --peer simone --json
+```
+
+Messages are raw history. This command is read-only and is intended for verification and evidence inspection.
+
 ### List facts
 
 ```bash
@@ -124,7 +146,9 @@ Before making a memory migration or identity repair, an agent should run:
 ```bash
 hermes-local-memory --db memory.sqlite peers --json
 hermes-local-memory --db memory.sqlite aliases --json
+hermes-local-memory --db memory.sqlite cards --peer <peer> --json
 hermes-local-memory --db memory.sqlite facts --peer <peer> --json
+hermes-local-memory --db memory.sqlite messages --peer <peer> --json
 hermes-local-memory --db memory.sqlite context --peer <peer> --observer <assistant> --query "current task"
 ```
 

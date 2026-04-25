@@ -253,6 +253,69 @@ class LocalMemoryStore:
             rows = conn.execute("select * from sessions order by updated_at desc, id").fetchall()
             return [dict(row) for row in rows]
 
+    def list_cards(
+        self,
+        *,
+        subject_peer_id: str | None = None,
+        observer_peer_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        clauses = []
+        params: list[Any] = []
+        if subject_peer_id:
+            clauses.append("subject_peer_id = ?")
+            params.append(subject_peer_id)
+        if observer_peer_id:
+            clauses.append("observer_peer_id = ?")
+            params.append(observer_peer_id)
+        where = f"where {' and '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                select * from cards
+                {where}
+                order by updated_at desc, subject_peer_id, observer_peer_id
+                limit ?
+                """,
+                params,
+            ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            data["items"] = json.loads(data.pop("content_json") or "[]")
+            result.append(data)
+        return result
+
+    def list_messages(
+        self,
+        *,
+        session_id: str | None = None,
+        peer_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        clauses = []
+        params: list[Any] = []
+        if session_id:
+            clauses.append("session_id = ?")
+            params.append(session_id)
+        if peer_id:
+            clauses.append("peer_id = ?")
+            params.append(peer_id)
+        where = f"where {' and '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                select * from messages
+                {where}
+                order by id asc
+                limit ?
+                """,
+                params,
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def list_facts(
         self,
         *,

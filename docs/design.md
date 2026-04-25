@@ -337,10 +337,10 @@ Still to verify manually in a live Hermes runtime after installation.
 
 Done for read-only inspection:
 
-- print peers/aliases/sessions/facts
+- print peers/aliases/sessions/cards/messages/facts
 - show injected context
 - search facts
-- inspect evidence IDs in JSON output
+- inspect card items, raw messages, and evidence IDs in JSON output
 
 Future repair commands should remain explicit and auditable.
 

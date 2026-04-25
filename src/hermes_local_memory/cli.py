@@ -38,6 +38,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_readonly_table_command(sub, "aliases", "List peer aliases")
     _add_readonly_table_command(sub, "sessions", "List sessions")
 
+    cards = _add_readonly_table_command(sub, "cards", "List peer cards")
+    cards.add_argument("--peer", help="Filter by subject peer id or alias")
+    cards.add_argument("--observer", help="Filter by observer peer id or alias")
+    cards.add_argument("--limit", type=int, default=100, help="Maximum cards, default: 100")
+
+    messages = _add_readonly_table_command(sub, "messages", "List raw messages")
+    messages.add_argument("--session", help="Filter by session id")
+    messages.add_argument("--peer", help="Filter by peer id or alias")
+    messages.add_argument("--limit", type=int, default=50, help="Maximum messages, default: 50")
+
     facts = _add_readonly_table_command(sub, "facts", "List durable facts")
     facts.add_argument("--peer", help="Filter by peer id or alias")
     facts.add_argument("--observer", help="Filter by observer peer id or alias")
@@ -85,6 +95,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "sessions":
         _print_rows(store.list_sessions(), as_json=args.json)
+        return 0
+    if args.command == "cards":
+        peer_id = _resolve_optional_peer_id(store, args.peer)
+        observer_id = _resolve_optional_peer_id(store, args.observer)
+        _print_rows(
+            store.list_cards(
+                subject_peer_id=peer_id,
+                observer_peer_id=observer_id,
+                limit=args.limit,
+            ),
+            as_json=args.json,
+        )
+        return 0
+    if args.command == "messages":
+        peer_id = _resolve_optional_peer_id(store, args.peer)
+        _print_rows(
+            store.list_messages(session_id=args.session, peer_id=peer_id, limit=args.limit),
+            as_json=args.json,
+        )
         return 0
     if args.command == "facts":
         peer_id = _resolve_optional_peer_id(store, args.peer)
@@ -141,7 +170,21 @@ def _print_rows(rows: list[dict[str, Any]], *, as_json: bool) -> None:
 
 
 def _format_row(row: dict[str, Any]) -> str:
-    preferred = ["id", "alias", "peer_id", "display_name", "kind", "content", "title", "source"]
+    preferred = [
+        "id",
+        "alias",
+        "peer_id",
+        "subject_peer_id",
+        "observer_peer_id",
+        "session_id",
+        "role",
+        "display_name",
+        "kind",
+        "content",
+        "items",
+        "title",
+        "source",
+    ]
     parts = []
     for key in preferred:
         if key in row and row[key] is not None:

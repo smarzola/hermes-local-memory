@@ -182,6 +182,8 @@ The CLI includes read-only inspection commands:
 hermes-local-memory --db memory.sqlite peers
 hermes-local-memory --db memory.sqlite aliases
 hermes-local-memory --db memory.sqlite sessions
+hermes-local-memory --db memory.sqlite cards --peer user
+hermes-local-memory --db memory.sqlite messages --peer user
 hermes-local-memory --db memory.sqlite facts --peer user
 hermes-local-memory --db memory.sqlite search "migration history"
 hermes-local-memory --db memory.sqlite context --peer user --observer ai --query "migration"
