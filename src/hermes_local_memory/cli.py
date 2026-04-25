@@ -65,6 +65,44 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--observer", required=True, help="Observer peer id or alias")
     context.add_argument("--session", help="Optional session id")
     context.add_argument("--query", help="Optional focus query")
+
+    alias = sub.add_parser("alias", help="Mutate aliases explicitly")
+    alias_sub = alias.add_subparsers(dest="alias_command", required=True)
+    alias_add = alias_sub.add_parser("add", help="Add or replace an alias mapping")
+    alias_add.add_argument("alias")
+    alias_add.add_argument("--peer", required=True, help="Target peer id or alias")
+    alias_add.add_argument("--source", default="manual")
+    alias_add.add_argument("--confidence", type=float, default=1.0)
+    alias_add.add_argument("--verified", action="store_true")
+    alias_add.add_argument("--json", action="store_true")
+    alias_move = alias_sub.add_parser("move", help="Move an alias to another peer")
+    alias_move.add_argument("alias")
+    alias_move.add_argument("--peer", required=True, help="Target peer id or alias")
+    alias_move.add_argument("--source", default="manual")
+    alias_move.add_argument("--confidence", type=float, default=1.0)
+    alias_move.add_argument("--verified", action="store_true")
+    alias_move.add_argument("--json", action="store_true")
+
+    fact = sub.add_parser("fact", help="Mutate durable facts explicitly")
+    fact_sub = fact.add_subparsers(dest="fact_command", required=True)
+    fact_add = fact_sub.add_parser("add", help="Add a durable fact")
+    fact_add.add_argument("content")
+    fact_add.add_argument("--peer", required=True, help="Subject peer id or alias")
+    fact_add.add_argument("--observer", required=True, help="Observer peer id or alias")
+    fact_add.add_argument("--kind", default="note")
+    fact_add.add_argument("--source", default="manual")
+    fact_add.add_argument("--json", action="store_true")
+    fact_retract = fact_sub.add_parser("retract", help="Mark a fact as retracted")
+    fact_retract.add_argument("fact_id")
+    fact_retract.add_argument("--json", action="store_true")
+
+    card = sub.add_parser("card", help="Mutate peer cards explicitly")
+    card_sub = card.add_subparsers(dest="card_command", required=True)
+    card_replace = card_sub.add_parser("replace", help="Replace a full card from a JSON list file")
+    card_replace.add_argument("--peer", required=True, help="Subject peer id or alias")
+    card_replace.add_argument("--observer", required=True, help="Observer peer id or alias")
+    card_replace.add_argument("--from-file", required=True, help="Path to JSON list of strings")
+    card_replace.add_argument("--json", action="store_true")
     return parser
 
 
@@ -144,6 +182,39 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
+    if args.command == "alias":
+        peer_id = _resolve_required_peer_id(store, args.peer)
+        row = store.set_alias(
+            args.alias,
+            peer_id=peer_id,
+            source=args.source,
+            confidence=args.confidence,
+            verified=args.verified,
+        )
+        _print_one(row, as_json=args.json)
+        return 0
+    if args.command == "fact":
+        if args.fact_command == "add":
+            peer_id = _resolve_required_peer_id(store, args.peer)
+            observer_id = _resolve_required_peer_id(store, args.observer)
+            row = store.add_fact(
+                subject_peer_id=peer_id,
+                observer_peer_id=observer_id,
+                content=args.content,
+                kind=args.kind,
+                source=args.source,
+            )
+        else:
+            row = store.update_fact_status(args.fact_id, "retracted")
+        _print_one(row, as_json=args.json)
+        return 0
+    if args.command == "card":
+        peer_id = _resolve_required_peer_id(store, args.peer)
+        observer_id = _resolve_required_peer_id(store, args.observer)
+        items = _read_card_items(Path(args.from_file))
+        row = store.set_card(subject_peer_id=peer_id, observer_peer_id=observer_id, items=items)
+        _print_one(row, as_json=args.json)
+        return 0
     return 1
 
 
@@ -156,6 +227,20 @@ def _resolve_optional_peer_id(store: LocalMemoryStore, value: str | None) -> str
 def _resolve_required_peer_id(store: LocalMemoryStore, value: str) -> str:
     resolved = store.resolve_peer(value)
     return resolved["id"] if resolved is not None else value
+
+
+def _read_card_items(path: Path) -> list[str]:
+    data = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    if not isinstance(data, list) or not all(isinstance(item, str) for item in data):
+        raise ValueError("card file must contain a JSON list of strings")
+    return data
+
+
+def _print_one(row: dict[str, Any], *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(row, ensure_ascii=False, indent=2))
+    else:
+        print(_format_row(row))
 
 
 def _print_rows(rows: list[dict[str, Any]], *, as_json: bool) -> None:

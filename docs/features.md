@@ -159,12 +159,18 @@ Consolidation should be explicit and inspectable:
 
 ### Fact replacement/retraction
 
-`memory_conclude` should grow beyond add-only behavior:
+The CLI can now add and retract facts:
 
-- add
-- replace
-- retract
-- supersede
+```bash
+hermes-local-memory --db memory.sqlite fact add "..." --peer simone --observer ambrogio
+hermes-local-memory --db memory.sqlite fact retract fact_abc123
+```
+
+Provider tool support is still add-only; replace/supersede semantics remain planned.
+
+- add: CLI done, provider done through `memory_conclude`
+- retract: CLI done
+- replace/supersede: planned
 
 ### Summaries
 

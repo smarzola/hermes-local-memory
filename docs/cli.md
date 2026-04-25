@@ -17,11 +17,16 @@ The inspection commands in this document are read-only:
 
 They do not mutate the database. They are intended for humans and agents to verify identity mappings, durable facts, and context injection before enabling or migrating a live memory provider.
 
-The only current write command is:
+Current write commands are explicit repair/mutation commands:
 
 - `install-shim`
+- `alias add` / `alias move`
+- `fact add` / `fact retract`
+- `card replace`
 
 `install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
+
+Repair commands are intentionally explicit: they name the object being changed and return the changed row, preferably as JSON for auditability. They do not perform automatic consolidation or hidden rewrites.
 
 ## Database selection
 
@@ -138,6 +143,62 @@ hermes-local-memory --db memory.sqlite context \
 ```
 
 This renders the same source-labeled context shape used by provider `prefetch()`.
+
+## Repair commands
+
+Repair commands mutate the DB and should be used deliberately. Prefer `--json` and commit/export the output in migration notes when doing larger repairs.
+
+### Add or move aliases
+
+```bash
+hermes-local-memory --db memory.sqlite alias add telegram:7973745978 \
+  --peer andra \
+  --source telegram \
+  --verified \
+  --json
+
+hermes-local-memory --db memory.sqlite alias move telegram:7973745978 \
+  --peer simone \
+  --json
+```
+
+`alias move` is intentionally just an explicit alias rewrite. It does not rewrite raw messages or facts.
+
+### Add or retract facts
+
+```bash
+hermes-local-memory --db memory.sqlite fact add \
+  "Simone prefers local-first tools." \
+  --peer simone \
+  --observer ambrogio \
+  --kind preference \
+  --json
+
+hermes-local-memory --db memory.sqlite fact retract fact_abc123 --json
+```
+
+Retracting a fact marks it `retracted`; it does not delete the row.
+
+### Replace cards
+
+Cards are replaced as a full JSON list of strings:
+
+```bash
+cat > /tmp/simone-card.json <<'JSON'
+[
+  "Name: Simone",
+  "Preference: explicit repair commands"
+]
+JSON
+
+hermes-local-memory --db memory.sqlite card replace \
+  --peer simone \
+  --observer ambrogio \
+  --from-file /tmp/simone-card.json \
+  --json
+```
+
+Full replacement is intentional: it makes card repair auditable and avoids hidden merge behavior.
 
 ## Agent usage pattern
 

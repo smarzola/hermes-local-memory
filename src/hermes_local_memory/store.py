@@ -236,6 +236,26 @@ class LocalMemoryStore:
         data["evidence_message_ids"] = json.loads(data.pop("evidence_json") or "[]")
         return data
 
+    def get_fact(self, fact_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute("select * from facts where id = ?", (fact_id,)).fetchone()
+            return self._hydrate_fact(row) if row is not None else None
+
+    def update_fact_status(self, fact_id: str, status: str) -> dict[str, Any]:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                update facts
+                set status = ?, updated_at = datetime('now')
+                where id = ?
+                """,
+                (status, fact_id),
+            )
+            row = conn.execute("select * from facts where id = ?", (fact_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"fact not found: {fact_id}")
+            return self._hydrate_fact(row)
+
     def list_peers(self) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(

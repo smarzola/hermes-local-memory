@@ -342,7 +342,7 @@ Done for read-only inspection:
 - search facts
 - inspect card items, raw messages, and evidence IDs in JSON output
 
-Future repair commands should remain explicit and auditable.
+Repair commands are now explicit and auditable for alias mapping, fact add/retract, and full card replacement. They intentionally do not perform hidden rewrites of raw messages or derived facts.
 
 ### Milestone 4: Honcho importer
 
