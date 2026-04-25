@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from hermes_local_memory.consolidation import build_consolidation_plan
 from hermes_local_memory.hermes_plugin import write_plugin_shim
 from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
 from hermes_local_memory.honcho_import import (
@@ -72,6 +73,32 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--observer", required=True, help="Observer peer id or alias")
     context.add_argument("--session", help="Optional session id")
     context.add_argument("--query", help="Optional focus query")
+
+    consolidate = sub.add_parser(
+        "consolidate",
+        help="Preview or apply deterministic memory consolidation",
+    )
+    consolidate.add_argument("--peer", required=True, help="Subject peer id or alias")
+    consolidate.add_argument("--observer", required=True, help="Observer peer id or alias")
+    consolidate.add_argument(
+        "--promote-candidates",
+        action="store_true",
+        help="Promote unique candidate facts",
+    )
+    mode = consolidate.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Preview only; do not write")
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply proposed promotions/supersedes/card update",
+    )
+    consolidate.add_argument(
+        "--limit",
+        type=int,
+        default=500,
+        help="Maximum facts per status to inspect",
+    )
+    consolidate.add_argument("--json", action="store_true", help="Print JSON")
 
     alias = sub.add_parser("alias", help="Mutate aliases explicitly")
     alias_sub = alias.add_subparsers(dest="alias_command", required=True)
@@ -256,6 +283,21 @@ def main(argv: list[str] | None = None) -> int:
                 query=args.query,
             )
         )
+        return 0
+    if args.command == "consolidate":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        peer_id = _resolve_required_peer_id(store, args.peer)
+        observer_id = _resolve_required_peer_id(store, args.observer)
+        plan = build_consolidation_plan(
+            store,
+            subject_peer_id=peer_id,
+            observer_peer_id=observer_id,
+            promote_candidates=args.promote_candidates,
+            apply=args.apply,
+            limit=args.limit,
+        )
+        _print_plan(plan, as_json=args.json)
         return 0
     if args.command == "alias":
         peer_id = _resolve_required_peer_id(store, args.peer)

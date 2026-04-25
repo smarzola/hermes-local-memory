@@ -174,12 +174,43 @@ The SQLite fixture importer remains dry-run only. Identity map file support and 
 
 ### Consolidation
 
-Consolidation should be explicit and inspectable:
+Consolidation is explicit, deterministic, and inspectable. It currently:
 
-1. collect candidate facts
-2. deduplicate or merge them
-3. propose card/fact changes as a diff
-4. apply only when approved or configured
+1. reads the current peer card, active facts, and candidate facts for a subject/observer pair
+2. supersedes candidate facts that duplicate an existing card line or active fact
+3. optionally promotes unique candidate facts
+4. proposes card additions from active facts and promoted candidates
+5. applies only with `--apply` or `memory_consolidate({"apply": true})`
+
+CLI examples:
+
+```bash
+hermes-local-memory --db memory.sqlite consolidate \
+  --peer simone \
+  --observer ambrogio \
+  --promote-candidates \
+  --dry-run \
+  --json
+
+hermes-local-memory --db memory.sqlite consolidate \
+  --peer simone \
+  --observer ambrogio \
+  --promote-candidates \
+  --apply \
+  --json
+```
+
+Provider tool:
+
+```json
+{
+  "peer": "user",
+  "promote_candidates": true,
+  "apply": false
+}
+```
+
+The MVP does not call an LLM, delete raw history, or silently mutate memory during normal context injection. LLM-assisted extraction and richer summarization remain future layers on top of this deterministic base.
 
 ### Fact replacement/retraction
 

@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from hermes_local_memory.consolidation import build_consolidation_plan
 from hermes_local_memory.store import LocalMemoryStore
 
 PROFILE_SCHEMA = {
@@ -75,6 +76,30 @@ CONCLUDE_SCHEMA = {
             "source": {"type": "string", "description": "Fact source, default manual."},
         },
         "required": ["content"],
+    },
+}
+
+CONSOLIDATE_SCHEMA = {
+    "name": "memory_consolidate",
+    "description": "Preview or apply deterministic local memory consolidation.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "peer": {
+                "type": "string",
+                "description": "Peer alias or id. Defaults to current user.",
+            },
+            "promote_candidates": {
+                "type": "boolean",
+                "description": "Promote unique candidate facts. Defaults to false.",
+            },
+            "apply": {
+                "type": "boolean",
+                "description": "Apply the proposed changes. Defaults to false/dry-run.",
+            },
+            "limit": {"type": "integer", "description": "Maximum facts per status to inspect."},
+        },
+        "required": [],
     },
 }
 
@@ -171,7 +196,13 @@ class LocalMemoryProvider:
         )
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
-        return [PROFILE_SCHEMA, SEARCH_SCHEMA, CONTEXT_SCHEMA, CONCLUDE_SCHEMA]
+        return [
+            PROFILE_SCHEMA,
+            SEARCH_SCHEMA,
+            CONTEXT_SCHEMA,
+            CONCLUDE_SCHEMA,
+            CONSOLIDATE_SCHEMA,
+        ]
 
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **_: Any) -> str:
         try:
@@ -183,6 +214,8 @@ class LocalMemoryProvider:
                 return self._handle_context(args)
             if tool_name == "memory_conclude":
                 return self._handle_conclude(args)
+            if tool_name == "memory_consolidate":
+                return self._handle_consolidate(args)
         except Exception as exc:
             return self._error(str(exc))
         return self._error(f"unknown tool: {tool_name}")
@@ -234,6 +267,19 @@ class LocalMemoryProvider:
             evidence_message_ids=self._last_user_message_ids,
         )
         return self._ok(fact=fact)
+
+    def _handle_consolidate(self, args: dict[str, Any]) -> str:
+        store = self._require_store()
+        peer_id = self._resolve_peer_id(args.get("peer"))
+        plan = build_consolidation_plan(
+            store,
+            subject_peer_id=peer_id,
+            observer_peer_id=self.assistant_peer_id,
+            promote_candidates=bool(args.get("promote_candidates", False)),
+            apply=bool(args.get("apply", False)),
+            limit=int(args.get("limit") or 500),
+        )
+        return self._ok(plan=plan)
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
         store = self._require_store()

@@ -38,13 +38,13 @@ The package now includes a Hermes-compatible `LocalMemoryProvider` with these to
 - `memory_search` — search durable facts.
 - `memory_context` — show exactly what would be injected.
 - `memory_conclude` — add durable facts with evidence links to the most recent synced user turn.
+- `memory_consolidate` — preview/apply deterministic consolidation of cards and candidate facts.
 
 The provider is intentionally independently testable and does not import Hermes. A thin Hermes plugin shim can wrap this class from `$HERMES_HOME/plugins/local_memory/` or upstream Hermes later.
 
 Planned next surfaces:
 
-- `memory_consolidate` — optional preview/apply consolidation jobs.
-- Honcho importer — preserve raw history and migrate cards/documents into local facts/candidates.
+- richer summarization and optional LLM-assisted extraction/consolidation.
 
 ## Development
 

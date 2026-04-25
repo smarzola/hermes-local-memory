@@ -145,3 +145,60 @@ def test_cli_card_replace_from_file(tmp_path: Path, capsys) -> None:  # noqa: AN
     assert card["subject_peer_id"] == "simone"
     assert card["observer_peer_id"] == "ambrogio"
     assert card["items"] == ["Name: Simone", "Preference: explicit repair commands"]
+
+
+def test_cli_consolidate_dry_run_and_apply(tmp_path: Path, capsys) -> None:  # noqa: ANN001
+    db_path = tmp_path / "memory.sqlite"
+    store = seed_store(db_path)
+    store.add_fact(
+        fact_id="fact_candidate",
+        subject_peer_id="simone",
+        observer_peer_id="ambrogio",
+        content="Simone prefers inspectable consolidation.",
+        kind="preference",
+        status="candidate",
+    )
+
+    dry_run_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "consolidate",
+            "--peer",
+            "telegram:151011988",
+            "--observer",
+            "ambrogio",
+            "--promote-candidates",
+            "--dry-run",
+            "--json",
+        ],
+        capsys,
+    )
+    dry_run = json.loads(dry_run_output)
+    assert dry_run["mode"] == "dry-run"
+    assert dry_run["counts"]["candidate_promotions"] == 1
+    assert store.get_fact("fact_candidate")["status"] == "candidate"
+
+    apply_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "consolidate",
+            "--peer",
+            "simone",
+            "--observer",
+            "ambrogio",
+            "--promote-candidates",
+            "--apply",
+            "--json",
+        ],
+        capsys,
+    )
+    applied = json.loads(apply_output)
+    assert applied["mode"] == "apply"
+    assert applied["writes"]["candidate_promotions"] == 1
+    assert store.get_fact("fact_candidate")["status"] == "active"
+    assert "Simone prefers inspectable consolidation." in store.get_card(
+        subject_peer_id="simone",
+        observer_peer_id="ambrogio",
+    )

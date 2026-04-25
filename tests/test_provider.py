@@ -45,6 +45,7 @@ def test_provider_exposes_memory_tools_and_can_write_profile_card(tmp_path: Path
         "memory_search",
         "memory_context",
         "memory_conclude",
+        "memory_consolidate",
     }
 
     write_result = parse_tool_result(
@@ -104,3 +105,43 @@ def test_provider_context_injection_is_source_labeled(tmp_path: Path) -> None:
     assert "inspectable" in injected
     assert "source=manual" in injected
     assert context_result["context"] == injected
+
+
+def test_provider_consolidate_previews_and_applies_candidate_promotion(tmp_path: Path) -> None:
+    provider = make_provider(tmp_path)
+    provider.handle_tool_call(
+        "memory_profile",
+        {"card": ["Name: Simone"]},
+    )
+    store = provider.store
+    assert store is not None
+    candidate = store.add_fact(
+        subject_peer_id=provider.user_peer_id,
+        observer_peer_id=provider.assistant_peer_id,
+        content="Simone prefers consolidation to be inspectable.",
+        kind="preference",
+        status="candidate",
+    )
+
+    preview = parse_tool_result(
+        provider.handle_tool_call(
+            "memory_consolidate",
+            {"promote_candidates": True},
+        )
+    )
+    assert preview["plan"]["mode"] == "dry-run"
+    assert preview["plan"]["counts"]["candidate_promotions"] == 1
+    assert store.get_fact(candidate["id"])["status"] == "candidate"
+
+    applied = parse_tool_result(
+        provider.handle_tool_call(
+            "memory_consolidate",
+            {"promote_candidates": True, "apply": True},
+        )
+    )
+    assert applied["plan"]["mode"] == "apply"
+    assert store.get_fact(candidate["id"])["status"] == "active"
+    assert "Simone prefers consolidation to be inspectable." in store.get_card(
+        subject_peer_id=provider.user_peer_id,
+        observer_peer_id=provider.assistant_peer_id,
+    )
