@@ -6,7 +6,8 @@ from urllib.parse import parse_qs, urlparse
 
 from hermes_local_memory.cli import main
 from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
-from hermes_local_memory.honcho_import import plan_honcho_export_import
+from hermes_local_memory.honcho_import import apply_honcho_import_plan, plan_honcho_export_import
+from hermes_local_memory.store import LocalMemoryStore
 
 
 class FakeHonchoTransport:
@@ -159,6 +160,44 @@ def test_plan_honcho_export_import_from_api_export_does_not_write(tmp_path: Path
     assert plan["facts"][0]["status"] == "candidate"
 
 
+def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> None:
+    client = HonchoApiClient("https://honcho.example/v3", transport=FakeHonchoTransport())
+    export = export_honcho_api(client, workspace="hermes")
+    target_db = tmp_path / "local.sqlite"
+    plan = plan_honcho_export_import(export, target_db=target_db)
+
+    first = apply_honcho_import_plan(plan, backup=True)
+    second = apply_honcho_import_plan(plan, backup=True)
+
+    assert first["mode"] == "apply"
+    assert first["backup_path"] is None
+    assert first["writes"] == {
+        "peers_upserted": 2,
+        "aliases_upserted": 2,
+        "sessions_upserted": 1,
+        "session_peers_upserted": 2,
+        "messages_inserted": 2,
+        "messages_skipped_existing": 0,
+        "cards_upserted": 3,
+        "facts_inserted": 1,
+        "facts_skipped_existing": 0,
+    }
+    assert second["backup_path"] is not None
+    assert Path(second["backup_path"]).exists()
+    assert second["writes"]["messages_inserted"] == 0
+    assert second["writes"]["messages_skipped_existing"] == 2
+    assert second["writes"]["facts_inserted"] == 0
+    assert second["writes"]["facts_skipped_existing"] == 1
+
+    store = LocalMemoryStore(target_db)
+    assert len(store.list_peers()) == 2
+    assert len(store.list_aliases()) == 2
+    assert len(store.list_sessions()) == 1
+    assert len(store.list_messages(limit=10)) == 2
+    assert len(store.list_cards(limit=10)) == 3
+    assert len(store.list_facts(status="candidate", limit=10)) == 1
+
+
 def test_honcho_api_import_cli_dry_run_prints_json_without_writing(
     tmp_path: Path,
     capsys,  # noqa: ANN001
@@ -196,3 +235,70 @@ def test_honcho_api_import_cli_dry_run_prints_json_without_writing(
     assert output["source"]["kind"] == "honcho-api"
     assert output["counts"]["messages"] == 2
     assert not target_db.exists()
+
+
+def test_honcho_api_import_cli_apply_writes_with_backup(
+    tmp_path: Path,
+    capsys,  # noqa: ANN001
+    monkeypatch,  # noqa: ANN001
+) -> None:
+    transport = FakeHonchoTransport()
+
+    def fake_client(base_url: str, api_key: str | None = None) -> HonchoApiClient:
+        return HonchoApiClient(base_url, api_key=api_key, transport=transport)
+
+    monkeypatch.setattr("hermes_local_memory.cli.HonchoApiClient", fake_client)
+    target_db = tmp_path / "local.sqlite"
+
+    exit_code = main(
+        [
+            "--db",
+            str(target_db),
+            "import",
+            "honcho-api",
+            "--base-url",
+            "https://honcho.example/v3",
+            "--workspace",
+            "hermes",
+            "--api-key",
+            "secret",
+            "--apply",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["mode"] == "apply"
+    assert output["backup_path"] is None
+    assert output["writes"]["messages_inserted"] == 2
+    assert target_db.exists()
+
+
+def test_honcho_api_import_cli_rejects_missing_mode(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(
+        "hermes_local_memory.cli.HonchoApiClient",
+        lambda base_url, api_key=None: HonchoApiClient(
+            base_url,
+            api_key=api_key,
+            transport=FakeHonchoTransport(),
+        ),
+    )
+
+    try:
+        main(
+            [
+                "--db",
+                str(tmp_path / "local.sqlite"),
+                "import",
+                "honcho-api",
+                "--base-url",
+                "https://honcho.example/v3",
+                "--workspace",
+                "hermes",
+            ]
+        )
+    except ValueError as exc:
+        assert "Specify exactly one of --dry-run or --apply" in str(exc)
+    else:
+        raise AssertionError("expected missing mode to fail")

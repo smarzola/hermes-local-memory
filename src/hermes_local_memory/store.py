@@ -401,6 +401,17 @@ class LocalMemoryStore:
             ).fetchall()
             return [self._hydrate_fact(row) for row in rows]
 
+    def message_exists_by_source_id(self, source_message_id: str) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                "select 1 from messages where source_message_id = ? limit 1",
+                (source_message_id,),
+            ).fetchone()
+            return row is not None
+
+    def fact_exists(self, fact_id: str) -> bool:
+        return self.get_fact(fact_id) is not None
+
     def set_card(
         self,
         *,

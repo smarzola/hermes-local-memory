@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from hermes_local_memory.store import LocalMemoryStore
 
 
 def plan_honcho_import(
@@ -124,6 +128,143 @@ def _build_plan(
         "cards": cards[:limit_preview],
         "facts": facts[:limit_preview],
     }
+
+
+def apply_honcho_import_plan(plan: dict[str, Any], *, backup: bool = True) -> dict[str, Any]:
+    """Apply a previously generated Honcho import plan to the local SQLite store.
+
+    The operation is intentionally additive/idempotent: raw messages and facts are
+    skipped when their source IDs already exist, while peers, aliases, sessions,
+    session peers, and cards are upserted.
+    """
+
+    target_db = Path(plan["target"]["db_path"]).expanduser()
+    backup_path = _backup_db(target_db) if backup and target_db.exists() else None
+    store = LocalMemoryStore(target_db)
+    store.initialize()
+    writes = {
+        "peers_upserted": 0,
+        "aliases_upserted": 0,
+        "sessions_upserted": 0,
+        "session_peers_upserted": 0,
+        "messages_inserted": 0,
+        "messages_skipped_existing": 0,
+        "cards_upserted": 0,
+        "facts_inserted": 0,
+        "facts_skipped_existing": 0,
+    }
+
+    for peer in plan.get("peers", []):
+        store.upsert_peer(
+            peer["id"],
+            display_name=peer.get("display_name") or peer["id"],
+            kind=peer.get("kind") or "human",
+            metadata=peer.get("metadata") or {},
+        )
+        writes["peers_upserted"] += 1
+
+    for alias in plan.get("aliases", []):
+        store.set_alias(
+            alias["alias"],
+            peer_id=alias["peer_id"],
+            source=alias.get("source"),
+            confidence=float(alias.get("confidence", 1.0)),
+            verified=bool(alias.get("verified", False)),
+        )
+        writes["aliases_upserted"] += 1
+
+    for session in plan.get("sessions", []):
+        store.upsert_session(
+            session["id"],
+            profile_id=session.get("profile_id") or "default",
+            platform=session.get("platform"),
+            external_id=session.get("external_id"),
+            title=session.get("title"),
+            scope=session.get("scope") or "private",
+            metadata=session.get("metadata") or {},
+        )
+        writes["sessions_upserted"] += 1
+
+    for item in plan.get("session_peers", []):
+        _upsert_session_peer(store, item)
+        writes["session_peers_upserted"] += 1
+
+    for message in plan.get("messages", []):
+        source_message_id = message.get("source_message_id")
+        if source_message_id and store.message_exists_by_source_id(source_message_id):
+            writes["messages_skipped_existing"] += 1
+            continue
+        store.add_message(
+            session_id=message["session_id"],
+            peer_id=message["peer_id"],
+            role=message.get("role") or "user",
+            content=message.get("content") or "",
+            source_message_id=source_message_id,
+            metadata=message.get("metadata") or {},
+        )
+        writes["messages_inserted"] += 1
+
+    for card in plan.get("cards", []):
+        store.set_card(
+            subject_peer_id=card["subject_peer_id"],
+            observer_peer_id=card["observer_peer_id"],
+            items=card.get("items") or [],
+            scope=card.get("scope") or "global",
+            scope_id=card.get("scope_id") or "",
+        )
+        writes["cards_upserted"] += 1
+
+    for fact in plan.get("facts", []):
+        if store.fact_exists(fact["id"]):
+            writes["facts_skipped_existing"] += 1
+            continue
+        store.add_fact(
+            fact_id=fact["id"],
+            subject_peer_id=fact["subject_peer_id"],
+            observer_peer_id=fact["observer_peer_id"],
+            content=fact.get("content") or "",
+            kind=fact.get("kind") or "conclusion",
+            confidence=float(fact.get("confidence", 0.7)),
+            status=fact.get("status") or "candidate",
+            source=fact.get("source") or "honcho-import",
+            evidence_message_ids=fact.get("evidence_message_ids") or [],
+        )
+        writes["facts_inserted"] += 1
+
+    return {
+        "mode": "apply",
+        "source": plan["source"],
+        "target": plan["target"],
+        "backup_path": str(backup_path) if backup_path is not None else None,
+        "writes": writes,
+        "warnings": plan.get("warnings", []),
+    }
+
+
+def _backup_db(target_db: Path) -> Path:
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    backup_path = target_db.with_name(f"{target_db.name}.{timestamp}.bak")
+    shutil.copy2(target_db, backup_path)
+    return backup_path
+
+
+def _upsert_session_peer(store: LocalMemoryStore, item: dict[str, Any]) -> None:
+    with store.connect() as conn:
+        conn.execute(
+            """
+            insert into session_peers(session_id, peer_id, role, left_at)
+            values (?, ?, ?, ?)
+            on conflict(session_id, peer_id) do update set
+              role = excluded.role,
+              left_at = excluded.left_at
+            """,
+            (
+                item["session_id"],
+                item["peer_id"],
+                item.get("role") or "participant",
+                item.get("left_at"),
+            ),
+        )
 
 
 def _peer_from_export(row: dict[str, Any], workspace: str) -> dict[str, Any]:

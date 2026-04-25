@@ -66,6 +66,10 @@ create table if not exists messages (
   metadata_json text not null default '{}'
 );
 
+create unique index if not exists messages_source_message_id_uq
+on messages(source_message_id)
+where source_message_id is not null;
+
 create virtual table if not exists messages_fts using fts5(
   content,
   content='messages',

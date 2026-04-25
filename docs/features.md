@@ -148,7 +148,7 @@ hermes-local-memory --db memory.sqlite import honcho-api \
   --json
 ```
 
-Current API dry-run planning reports proposed:
+Current API dry-run/apply support handles:
 
 - peers
 - `honcho:<peer>` aliases
@@ -157,6 +157,8 @@ Current API dry-run planning reports proposed:
 - raw messages
 - peer cards from the peer-card API
 - conclusions as `candidate` facts
+
+Use `--dry-run` to preview and `--apply` to write. Apply mode is additive and idempotent; it does not mutate Honcho and does not switch the active Hermes provider. Existing target DBs are backed up automatically unless `--no-backup` is passed.
 
 A secondary SQLite fixture importer remains available for tests and local forensic exports:
 
@@ -168,7 +170,7 @@ hermes-local-memory --db memory.sqlite import honcho \
   --json
 ```
 
-Both importers are dry-run only and do not write the target DB. Apply mode, identity map file support, and richer collision detection remain planned.
+The SQLite fixture importer remains dry-run only. Identity map file support and richer collision detection remain planned.
 
 ### Consolidation
 

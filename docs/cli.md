@@ -146,9 +146,11 @@ hermes-local-memory --db memory.sqlite context \
 
 This renders the same source-labeled context shape used by provider `prefetch()`.
 
-### Plan a Honcho API import
+### Plan or apply a Honcho API import
 
 Prefer the API importer when possible. It works with local, remote, or hosted Honcho instances and depends on Honcho's HTTP API rather than private database tables.
+
+Dry-run first:
 
 ```bash
 hermes-local-memory --db memory.sqlite import honcho-api \
@@ -159,17 +161,35 @@ hermes-local-memory --db memory.sqlite import honcho-api \
   --json
 ```
 
-The current Honcho API importer is dry-run only. It pages through public API endpoints and returns a plan with:
+Apply after reviewing the plan:
 
-- proposed peers
-- proposed `honcho:<peer>` aliases
-- proposed sessions and session peer links
+```bash
+hermes-local-memory --db memory.sqlite import honcho-api \
+  --base-url http://localhost:8000/v3 \
+  --workspace hermes \
+  --api-key "$HONCHO_API_KEY" \
+  --apply \
+  --json
+```
+
+The importer pages through public API endpoints and plans/imports:
+
+- peers
+- `honcho:<peer>` aliases
+- sessions and session peer links
 - raw messages with `source_message_id=honcho-api:<id>`
 - peer cards from the peer-card API
 - conclusions as `candidate` facts
 - counts and warnings
 
-It does not create or modify the target Local Memory database. `--dry-run` is currently required.
+Apply mode is additive and idempotent:
+
+- peers, aliases, sessions, session peers, and cards are upserted
+- messages are skipped when their `source_message_id` already exists
+- facts are skipped when their planned fact ID already exists
+- no Honcho data is mutated
+- the active Hermes memory provider is not switched
+- an existing target DB is backed up automatically unless `--no-backup` is passed
 
 ### Plan a Honcho SQLite fixture import
 
