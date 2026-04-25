@@ -275,18 +275,19 @@ hermes-local-memory --db memory.sqlite messages --peer <peer> --json
 hermes-local-memory --db memory.sqlite context --peer <peer> --observer <assistant> --query "current task"
 ```
 
-When consolidating:
+When consolidating, prefer an autonomous-but-auditable agent loop:
 
-1. generate a dry-run plan
-2. review the proposed card/fact changes
-3. apply only after approval or policy allows it
-4. inspect rendered context after apply
-5. never mutate raw messages as part of consolidation
+1. generate a consolidation packet or plan with enough evidence and constraints
+2. let Hermes Agent reason over it and choose the action
+3. have Hermes produce a structured patch or call the appropriate memory tool
+4. validate/diff/apply through Local Memory
+5. inspect rendered context after apply
+6. never mutate raw messages as part of consolidation
 
-Future agent-assisted consolidation should follow this pattern:
+Agent-assisted consolidation should follow this pattern:
 
 ```text
-SQLite packet -> Hermes Agent reasoning -> structured patch -> validation/diff -> explicit apply
+SQLite packet -> Hermes Agent reasoning -> structured patch/tool call -> validation/diff -> explicit or policy-approved apply
 ```
 
 The memory package should not own model calls. Hermes should.
@@ -295,28 +296,45 @@ The memory package should not own model calls. Hermes should.
 
 ## Scheduled maintenance with Hermes cron
 
-It makes sense to run memory maintenance regularly, but scheduled jobs should be conservative.
+Regular memory maintenance is a first-class use case. The recommended path is to let Hermes schedule an autonomous maintenance job that has enough context, clear constraints, and permission boundaries to make routine cleanup decisions itself.
 
-Recommended default schedule:
+The package should stay simple and local; Hermes should own scheduling, model calls, and judgment.
 
-- generate a consolidation dry-run report weekly
-- deliver it to the current chat or save locally
-- do **not** auto-apply broad promotions from imported candidate facts
-- only auto-apply narrow, validated patches later, after the patch validator exists
+Recommended autonomous schedule:
+
+- run weekly or after a configurable number of new turns
+- inspect current card, active facts, candidate facts, and rendered context
+- use Hermes Agent to decide whether consolidation is useful
+- apply narrow, validated changes when the plan is clearly safe
+- deliver a concise summary of what changed and what was skipped
+- escalate to human review when the plan is large, noisy, ambiguous, or would rewrite the card heavily
 
 Example Hermes cron prompt:
 
 ```text
-Run a local-memory maintenance dry-run. Use the repository at /home/smarzola/hermes-local-memory.
-Do not mutate the live Hermes provider config. Do not apply consolidation.
-Run:
-PYTHONPATH=src python -m hermes_local_memory.cli --db ~/.hermes/memory/local_memory_trial_mapped.sqlite consolidate --peer simone --observer ambrogio --promote-candidates --dry-run --json
-Summarize counts, warnings, top proposed card additions, and whether the result looks safe or noisy. Deliver the summary back to this chat.
+Run a Hermes Local Memory maintenance job.
+Repository: /home/smarzola/hermes-local-memory
+Database: ~/.hermes/memory/local_memory_trial_mapped.sqlite
+Subject: simone
+Observer: ambrogio
+
+Use Local Memory as the auditable substrate and use Hermes reasoning for judgment.
+Inspect peers, aliases, the current card, candidate facts, active facts, and rendered context.
+Run a consolidation dry-run first. If the result is small, coherent, and clearly safe, apply it.
+If it is noisy, large, ambiguous, or mostly imported Honcho meta-facts, do not apply; summarize what blocked automatic consolidation.
+Never modify raw messages. Never switch the live Hermes provider config. Report exactly what changed or why nothing changed.
 ```
 
-In Hermes, create that as a scheduled job with the cron/automation tool rather than embedding a scheduler in this package. This keeps Local Memory local and simple while letting Hermes orchestrate periodic review.
+A more prudent/report-only variant is also useful for new deployments or risky imports:
 
----
+```text
+Run the same maintenance job, but do not apply changes. Produce only a dry-run report with counts, top proposed card additions, top promotions/supersedes, and a recommendation.
+```
+
+This gives both modes:
+
+- **autonomous by default** for well-scoped, well-validated maintenance
+- **report-only** when a human wants extra caution
 
 ## Documentation
 

@@ -298,38 +298,44 @@ Full replacement is intentional: it makes card repair auditable and avoids hidde
 
 ## Scheduled maintenance with Hermes cron
 
-This package intentionally does not embed its own scheduler. If you want regular memory maintenance, use Hermes' scheduling/cron layer to run local-memory commands and deliver reports.
+This package intentionally does not embed its own scheduler. Regular memory maintenance should be orchestrated by Hermes' scheduling/cron layer, because Hermes owns model calls, tools, policy, and judgment.
 
-Recommended safe pattern:
+Recommended primary pattern: autonomous but auditable.
 
-1. schedule dry-run reports first
-2. review noisy or large plans manually
-3. only later schedule narrow apply jobs for validated patches or tightly-scoped databases
-4. never let a broad imported Honcho candidate set auto-promote itself without review
+1. schedule a Hermes job with clear scope, database path, subject/observer peers, and permission boundaries
+2. have the job inspect current card, active facts, candidate facts, aliases, and rendered context
+3. have the job run a consolidation dry-run first
+4. allow the job to apply narrow, validated changes when the plan is clearly safe
+5. require the job to stop and report when the plan is large, noisy, ambiguous, or mostly imported meta-facts
+6. require an after-action summary listing changes, skipped items, and remaining concerns
 
-Example scheduled job prompt:
+Example autonomous scheduled job prompt:
 
 ```text
-Run a weekly Hermes Local Memory maintenance dry-run.
+Run a Hermes Local Memory maintenance job.
 Repository: /home/smarzola/hermes-local-memory
 Database: ~/.hermes/memory/local_memory_trial_mapped.sqlite
+Subject: simone
+Observer: ambrogio
 
-Commands:
-cd /home/smarzola/hermes-local-memory
-PYTHONPATH=src python -m hermes_local_memory.cli --db ~/.hermes/memory/local_memory_trial_mapped.sqlite consolidate --peer simone --observer ambrogio --promote-candidates --dry-run --json
-
-Do not apply changes. Summarize counts, top proposed card additions, top candidate promotions/supersedes, and whether the plan looks safe or noisy. Deliver the summary to the originating chat.
+Use Hermes Agent reasoning to make the maintenance decision. Use Local Memory as the auditable substrate.
+Inspect peers, aliases, cards, active facts, candidate facts, and rendered context.
+Run consolidation with --dry-run first.
+If the proposed changes are small, coherent, non-duplicative, and clearly supported by the candidate facts/card, apply them.
+If the result is noisy, large, ambiguous, identity-confused, or mostly imported Honcho meta-facts, do not apply.
+Never modify raw messages. Never switch live Hermes provider config. Report exactly what changed or why nothing changed.
 ```
 
-For a future agent-assisted workflow, the scheduled job should ask Hermes to produce a structured patch and then stop for review:
+Prudent/report-only variant for new deployments, risky imports, or cautious operators:
 
 ```text
-SQLite packet -> Hermes Agent reasoning -> structured patch -> validation/diff -> human-approved apply
+Run the same Hermes Local Memory maintenance job, but do not apply changes. Produce only a dry-run report with counts, top proposed card additions, top promotions/supersedes, and a recommendation.
 ```
 
-The memory backend should remain local and deterministic; Hermes should own model calls and scheduled orchestration.
+Both patterns keep scheduling and intelligence in Hermes while Local Memory remains local, deterministic, inspectable, and patch-oriented.
 
 ## Agent usage pattern
+
 
 Before making a memory migration or identity repair, an agent should run:
 
