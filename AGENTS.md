@@ -55,10 +55,19 @@ Reflection should run before consolidation in scheduled maintenance. Candidate f
 
 ## Setup and verification for agents
 
+Start here:
+
 ```bash
 git status --short
 PYTHONPATH=src pytest -q
 ruff check .
+PYTHONPATH=src python -m compileall -q src tests
+```
+
+If package metadata changed, also run:
+
+```bash
+uv build
 ```
 
 Install the Hermes shim without switching the active provider:
@@ -74,23 +83,26 @@ export LOCAL_MEMORY_DB=~/.hermes/memory/local_memory_trial.sqlite
 PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" peers --json
 ```
 
+Full setup/adoption instructions live in `docs/setup.md`. Release steps live in `docs/release.md`.
+
 ## Scheduled maintenance guidance
 
 Do not add a scheduler to this package. Instruct Hermes Agent to create a recurring Hermes cron job that:
 
-1. runs `reflection-maintenance` for stale sessions,
-2. has Hermes review reflection packets and produce reflection patches,
-3. validates/applies safe reflection patches,
-4. runs all-pairs `maintenance --dry-run`,
-5. applies only narrow, validated consolidation changes,
-6. reports reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations.
+1. runs `peer-review-packet` and resolves obvious aliases or emits human prompts,
+2. runs `reflection-maintenance` for stale sessions,
+3. has Hermes review reflection packets and produce reflection patches,
+4. validates/applies safe reflection patches,
+5. runs all-pairs `maintenance --dry-run`,
+6. applies only narrow, validated consolidation changes,
+7. reports peer prompts, reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations.
 
 Recommended starting cadence: nightly. High-volume deployments can move to every 6 hours once dry-run reports are clean.
 
 ## Near-term roadmap
 
-1. Richer prompt context that includes session summaries in addition to cards/facts.
-2. Safer candidate ranking/filtering for noisy imports.
-3. Higher-level Hermes cron templates or setup helpers.
-4. Live Hermes runtime validation of the generated `local_memory` plugin shim.
+1. Package/release hardening and smoke installs from built artifacts.
+2. Higher-level Hermes cron templates or setup helpers.
+3. Live Hermes runtime validation of the generated `local_memory` plugin shim.
+4. Safer candidate ranking/filtering for noisy imports.
 5. Optional embeddings.

@@ -10,7 +10,7 @@ The core idea is simple:
 
 This project is inspired by the good ideas in Honcho, especially peers/cards/consolidation, but deliberately chooses boring engineering: one local SQLite DB, explicit identity mapping, deterministic retrieval, source-labeled context, dry-runs before writes, and agent-generated patches instead of hidden backend mutation.
 
-> Status: **pre-alpha but functional**. The store, provider, plugin shim, CLI inspection/repair tools, Honcho API import, identity maps, and deterministic consolidation MVP are implemented and tested. Do not switch a production Hermes setup without doing a trial import and inspection first.
+> Status: **alpha**. The store, provider, plugin shim, CLI inspection/repair tools, Hermes markdown import, Honcho API import, identity maps, peer/candidate/card review, reflection, and deterministic consolidation are implemented and tested. Do not switch a production Hermes setup without doing a trial import and inspection first.
 
 ---
 
@@ -92,10 +92,34 @@ The SQLite store includes:
 
 ## Quick install for humans
 
-### 1. Clone and install
+### Option A: install as a tool
+
+After a package release is available:
 
 ```bash
-git clone https://github.com/<owner>/hermes-local-memory.git
+uv tool install hermes-local-memory
+# or
+pipx install hermes-local-memory
+```
+
+Before a package release, install from GitHub:
+
+```bash
+uv tool install git+https://github.com/smarzola/hermes-local-memory.git
+# or
+pipx install git+https://github.com/smarzola/hermes-local-memory.git
+```
+
+Verify:
+
+```bash
+hermes-local-memory --help
+```
+
+### Option B: run from a checkout
+
+```bash
+git clone https://github.com/smarzola/hermes-local-memory.git
 cd hermes-local-memory
 python -m venv .venv
 source .venv/bin/activate
@@ -104,13 +128,13 @@ pytest
 ruff check .
 ```
 
-If you do not want to install yet, most examples can be run from the checkout with:
+Without installing:
 
 ```bash
 PYTHONPATH=src python -m hermes_local_memory.cli --help
 ```
 
-### 2. Install the Hermes plugin shim
+### Install the Hermes plugin shim
 
 From an installed package:
 
@@ -132,7 +156,7 @@ This writes:
 
 It does **not** modify `~/.hermes/config.yaml` and does **not** switch your live memory provider.
 
-### 3. Configure Hermes
+### Configure Hermes
 
 After validating the shim and trial DB, configure Hermes:
 
@@ -144,6 +168,8 @@ memory:
 Then restart Hermes or start a fresh session.
 
 > Recommended: keep your existing provider active until you have imported/inspected data in a separate trial DB.
+
+Full setup/adoption guide: [docs/setup.md](docs/setup.md).
 
 ---
 
@@ -623,9 +649,11 @@ To schedule this from Hermes, create a recurring Hermes cron job with a self-con
 
 ## Documentation
 
+- [Setup and adoption guide](docs/setup.md)
 - [CLI reference](docs/cli.md)
 - [Features](docs/features.md)
 - [Design](docs/design.md)
+- [Release checklist](docs/release.md)
 - [Contributing](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)
 
@@ -638,6 +666,7 @@ src/hermes_local_memory/
   cli.py             CLI for inspection, repair, import, consolidation, shim install
   consolidation.py   Deterministic consolidation planner/apply logic
   peer_review.py     Agent peer/alias review packet and patch logic
+  hermes_markdown_import.py  Hermes USER.md / MEMORY.md importer
   hermes_plugin.py   Hermes user-plugin shim renderer
   honcho_api.py      stdlib Honcho HTTP API exporter
   honcho_import.py   Honcho import planner/apply logic + identity maps
@@ -660,7 +689,14 @@ ruff check .
 PYTHONPATH=src python -m compileall -q src tests
 ```
 
-CI runs on Python 3.10, 3.11, and 3.12.
+Build package artifacts before release:
+
+```bash
+uv build
+# or: python -m build
+```
+
+CI runs on Python 3.10, 3.11, and 3.12. See [docs/release.md](docs/release.md) for the release checklist.
 
 ---
 

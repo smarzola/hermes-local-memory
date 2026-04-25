@@ -3,4 +3,6 @@
 from hermes_local_memory.provider import LocalMemoryProvider
 from hermes_local_memory.store import LocalMemoryStore
 
-__all__ = ["LocalMemoryProvider", "LocalMemoryStore"]
+__version__ = "0.1.0"
+
+__all__ = ["LocalMemoryProvider", "LocalMemoryStore", "__version__"]

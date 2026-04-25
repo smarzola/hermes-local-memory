@@ -8,16 +8,17 @@ version = "0.1.0"
 description = "Local-first SQLite memory provider for Hermes Agent"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
-  { name = "Simone Marzola" }
+  { name = "Hermes Local Memory contributors" }
 ]
 keywords = ["hermes", "memory", "agent", "sqlite", "local-first"]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -28,14 +29,17 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+  "build>=1.2",
   "pytest>=8.0",
   "ruff>=0.6",
+  "twine>=5.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/smarzola/hermes-local-memory"
 Repository = "https://github.com/smarzola/hermes-local-memory"
 Issues = "https://github.com/smarzola/hermes-local-memory/issues"
+Changelog = "https://github.com/smarzola/hermes-local-memory/releases"
 
 [project.scripts]
 hermes-local-memory = "hermes_local_memory.cli:main"
