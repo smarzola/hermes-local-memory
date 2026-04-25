@@ -6,6 +6,62 @@ from hermes_local_memory.consolidation import build_consolidation_plan
 from hermes_local_memory.store import LocalMemoryStore
 
 
+def test_imported_honcho_candidates_are_not_bulk_promoted(tmp_path: Path) -> None:
+    store = LocalMemoryStore(tmp_path / "memory.sqlite")
+    store.initialize()
+    store.upsert_peer("alice", display_name="Alice", kind="human")
+    store.upsert_peer("bob", display_name="Bob", kind="ai")
+    imported = store.add_fact(
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        content="Bob said the latest commit is abc123 and CI is green.",
+        kind="conclusion",
+        status="candidate",
+        source="honcho-api-conclusion",
+        confidence=0.7,
+    )
+
+    plan = build_consolidation_plan(
+        store,
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        promote_candidates=True,
+        apply=True,
+    )
+
+    assert plan["counts"]["candidate_promotions"] == 0
+    assert plan["counts"]["card_additions"] == 0
+    assert store.get_fact(imported["id"])["status"] == "candidate"
+
+
+def test_high_confidence_local_candidates_can_be_promoted(tmp_path: Path) -> None:
+    store = LocalMemoryStore(tmp_path / "memory.sqlite")
+    store.initialize()
+    store.upsert_peer("alice", display_name="Alice", kind="human")
+    store.upsert_peer("bob", display_name="Bob", kind="ai")
+    local = store.add_fact(
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        content="Alice prefers local-first memory.",
+        kind="preference",
+        status="candidate",
+        source="reflection",
+        confidence=0.95,
+    )
+
+    plan = build_consolidation_plan(
+        store,
+        subject_peer_id="alice",
+        observer_peer_id="bob",
+        promote_candidates=True,
+        apply=True,
+    )
+
+    assert plan["counts"]["candidate_promotions"] == 1
+    assert [item["id"] for item in plan["candidate_promotions"]] == [local["id"]]
+    assert store.get_fact(local["id"])["status"] == "active"
+
+
 def _store_with_candidates(tmp_path: Path) -> tuple[LocalMemoryStore, dict[str, str]]:
     store = LocalMemoryStore(tmp_path / "memory.sqlite")
     store.initialize()

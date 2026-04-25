@@ -369,7 +369,7 @@ class LocalMemoryProvider:
             apply=bool(args.get("apply", False)),
             limit=int(args.get("limit") or 500),
         )
-        return self._ok(plan=plan)
+        return self._ok(plan=_summarize_maintenance_plan(plan))
 
     def _handle_peer_review(self, args: dict[str, Any]) -> str:
         store = self._require_store()
@@ -431,3 +431,30 @@ class LocalMemoryProvider:
     def _is_trivial_prompt(text: str) -> bool:
         stripped = (text or "").strip().lower()
         return stripped in {"", "ok", "okay", "yes", "no", "thanks", "thank you", "continue"}
+
+
+def _summarize_maintenance_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    """Return a compact tool result suitable for prompt injection/reporting."""
+
+    pair_summaries = []
+    for pair in plan.get("pairs", []):
+        counts = pair.get("counts", {})
+        if any(
+            counts.get(key, 0)
+            for key in ("candidate_promotions", "candidate_supersedes", "card_additions")
+        ):
+            pair_summaries.append(
+                {
+                    "subject_peer_id": pair.get("subject_peer_id"),
+                    "observer_peer_id": pair.get("observer_peer_id"),
+                    "counts": counts,
+                    "writes": pair.get("writes", []),
+                }
+            )
+    return {
+        "mode": plan.get("mode"),
+        "promote_candidates": plan.get("promote_candidates"),
+        "counts": plan.get("counts", {}),
+        "writes": plan.get("writes", []),
+        "pairs_with_changes": pair_summaries,
+    }

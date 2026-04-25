@@ -238,6 +238,8 @@ def test_provider_exposes_all_pairs_and_reflection_maintenance_tools(tmp_path: P
         content="Alice prefers natural memory growth.",
         kind="preference",
         status="candidate",
+        source="reflection",
+        confidence=0.95,
     )
 
     reflection = parse_tool_result(

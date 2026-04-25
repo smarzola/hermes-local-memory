@@ -52,7 +52,7 @@ def build_consolidation_plan(
         if norm in known_norms:
             candidate_supersedes.append(_fact_ref(fact, reason="duplicate"))
             continue
-        if promote_candidates:
+        if promote_candidates and _is_safe_auto_promotion_candidate(fact):
             candidate_promotions.append(_fact_ref(fact, reason="promote_candidate"))
             known_norms.add(norm)
 
@@ -359,6 +359,26 @@ def _fact_ref(fact: dict[str, Any], *, reason: str) -> dict[str, Any]:
         "source": fact.get("source"),
         "reason": reason,
     }
+
+
+def _is_safe_auto_promotion_candidate(fact: dict[str, Any]) -> bool:
+    """Return whether a candidate can be promoted without agent review.
+
+    Imported Honcho conclusions are intentionally noisy: many are speech reports,
+    task-state breadcrumbs, queue/debug observations, or stale project status. Keep
+    them searchable as candidates until an agent/human review patch promotes the
+    useful ones. Locally generated high-confidence candidates are eligible for the
+    boring deterministic path.
+    """
+
+    source = str(fact.get("source") or "")
+    if source.startswith("honcho-api") or source.startswith("honcho-"):
+        return False
+    try:
+        confidence = float(fact.get("confidence") or 0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    return confidence >= 0.9
 
 
 def _normalize_line(value: str) -> str:
