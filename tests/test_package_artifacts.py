@@ -14,7 +14,7 @@ def test_hatch_build_configuration_includes_packaged_agent_skill() -> None:
 
 def test_built_artifacts_include_local_memory_maintenance_skill() -> None:
     skill_path = "skills/local-memory-maintenance/SKILL.md"
-    artifacts = sorted(Path("dist").glob("hermes_local_memory-0.1.4*"))
+    artifacts = sorted(Path("dist").glob("hermes_local_memory-0.2.0*"))
 
     if not artifacts:
         # This test is primarily a release/build verification. Normal unit-test

@@ -93,7 +93,10 @@ Legacy names may exist as hidden compatibility aliases, but agents should prefer
 5. **First Honcho migration review**
    - If this is the first adoption/migration from Honcho, do not ignore Honcho candidate memories just because deterministic maintenance will not bulk-promote them.
    - For peers with imported Honcho candidates/cards, call `memory_build_honcho_migration_review_packet`.
-   - Promote only high-signal stable Honcho facts, retract or leave noisy candidates, and rebuild the compact card from selected imported memories.
+   - Inspect the packet's current card, active facts, and candidate facts before drafting a patch. Some peers may already have the useful facts active/carded and only noisy Honcho candidates remaining.
+   - Promote only high-signal stable Honcho facts. Prefer not to promote episodic support/chat artifacts, facts phrased around raw numeric peer IDs, tool/system-note artifacts, or one-off medical/logistics questions unless the user has asked to remember them.
+   - For noisy imported candidates, either leave them as candidates if unsure or retract them when they are clearly not durable memory material. Supersede duplicates when they overlap with already active/carded facts.
+   - Rebuild the compact card from selected imported memories plus existing active facts, keeping it concise and human-readable.
    - Validate with `memory_apply_honcho_migration_review_patch(apply=false)`.
    - Apply safe first-migration patches with `memory_apply_honcho_migration_review_patch(apply=true)`.
 

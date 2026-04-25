@@ -2,7 +2,7 @@
 
 Date: 2026-04-25
 Repository: `hermes-local-memory`
-Status: historical investigation notes / partially superseded by v0.1.4
+Status: historical investigation notes / partially superseded by v0.2.0
 
 ## Summary
 

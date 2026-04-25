@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.2.0
+
+### Changed
+
+- Re-released the provider-first memory maintenance workflow as the `0.2.0` feature milestone.
+- Included clarified packaged-skill guidance for first Honcho migration review: inspect packet state first, promote only stable high-signal imports, and retract or leave noisy numeric-id/system/artifact candidates.
+
 ## v0.1.4
 
 ### Added
