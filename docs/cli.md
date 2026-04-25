@@ -363,6 +363,28 @@ hermes-local-memory --db memory.sqlite apply-candidate-review-patch /tmp/alice-c
 
 Candidate review patches only change fact status (`active`, `superseded`, `retracted`) and optional compact card additions. Raw messages are never rewritten.
 
+### Review Honcho migration memories and cards safely
+
+Honcho-derived conclusions are imported as candidates so deterministic maintenance cannot blindly bulk-promote them. During first migration, however, those memories are valuable review material and should be used to rebuild cards when they are high-signal and stable.
+
+Use a combined Honcho migration review packet to review imported candidates and the compact card together:
+
+```bash
+hermes-local-memory --db memory.sqlite honcho-migration-review-packet \
+  --peer alice \
+  --observer bob \
+  --json
+```
+
+Then apply a validated patch with selected candidate promotions/retractions and a full `card_replace`:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-honcho-migration-review-patch \
+  /tmp/honcho-migration-review-patch.json \
+  --dry-run \
+  --json
+```
+
 ### Review imported cards safely
 
 Honcho and other memory systems may import compact cards that are useful but too verbose, duplicate, stale, or task-local. Card review is the migration cleanup step for that derived layer. It builds a packet containing the current card plus nearby active/candidate facts, lets Hermes Agent draft a cleaned full-card replacement, and validates the replacement before applying.
@@ -495,7 +517,7 @@ Current deterministic behavior:
 - does **not** append every existing active fact into the card
 - never deletes raw messages or facts
 
-For imported Honcho data, expect many noisy candidate facts. Prefer candidate review, scoped apply decisions, and after-action summaries over blind broad promotion. If cards need cleanup, use `card-review-packet` or a consolidation patch with `card_replace`; cards are compact synthesized views, not fact-table dumps.
+For imported Honcho data, expect mixed-quality candidate facts. Do not bulk-promote them through deterministic maintenance, but do not ignore them during first migration either. Prefer `honcho-migration-review-packet` / `apply-honcho-migration-review-patch` for first adoption: promote selected high-signal Honcho memories and rebuild the compact card in one validated review flow. For later cleanup, use candidate review, scoped apply decisions, and after-action summaries over blind broad promotion. If cards need cleanup, use `card-review-packet` or a consolidation patch with `card_replace`; cards are compact synthesized views, not fact-table dumps.
 
 ### Build a consolidation packet for Hermes Agent
 
@@ -633,18 +655,19 @@ Full replacement is intentional: it makes card repair auditable and avoids hidde
 
 This package intentionally does not embed its own scheduler. Regular memory maintenance should be orchestrated by Hermes' scheduling/cron layer, because Hermes owns model calls, tools, policy, and judgment.
 
-Recommended primary pattern: autonomous but auditable. Reflection runs first; consolidation runs second.
+Recommended primary pattern: autonomous but auditable. Reflection runs first; consolidation runs second. Prefer the provider tools in normal Hermes Agent cron jobs; use CLI commands only for deeper inspection, import/migration work, or when running outside an agent session.
 
-1. schedule a Hermes job with clear repository path, database path, and permission boundaries
-2. run `reflection-maintenance` to discover stale sessions and build raw-message review packets
-3. have Hermes Agent review each packet and produce reflection patches with candidate facts and session summaries
-4. validate every reflection patch with `apply-reflection-patch --dry-run`; apply only narrow, evidence-backed patches
-5. run all-pairs `maintenance --dry-run` after reflection so new candidates can be considered
-6. inspect the compact changed-pair summary and, when needed, the full pair packet
-7. apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions
-8. use card review or a validated `card_replace` patch when a card needs synthesis/cleanup
-9. skip/report sessions or pairs whose plans are large, noisy, ambiguous, identity-confused, or mostly imported meta-facts
-10. produce an after-action summary listing reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations
+1. install/attach/load the packaged `local-memory-maintenance` skill from `skills/local-memory-maintenance/SKILL.md`, then schedule a Hermes job with clear repository path, database path, and permission boundaries
+2. run `memory_build_peer_review_packet` and, only for deterministic alias decisions, validate/apply with `memory_apply_peer_review_patch`
+3. run `memory_build_reflection_packets` to discover stale sessions and build raw-message review packets
+4. have Hermes Agent review each packet and produce reflection patches with candidate facts and session summaries
+5. validate every reflection patch with `memory_apply_reflection_patch(apply=false)`; apply only narrow, evidence-backed patches with `apply=true`
+6. run `memory_maintenance(promote_candidates=true, apply=false)` after reflection so new candidates can be considered
+7. inspect the compact changed-pair summary and, when needed, use `memory_build_candidate_review_packet` or CLI `consolidation-packet` for deeper pair review
+8. apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions
+9. use `memory_build_card_review_packet` plus `memory_apply_card_review_patch`, or a validated `card_replace` patch, when a card needs synthesis/cleanup
+10. skip/report sessions or pairs whose plans are large, noisy, ambiguous, identity-confused, or mostly imported meta-facts
+11. produce an after-action summary listing reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations
 
 Example autonomous scheduled job prompt:
 
@@ -653,26 +676,36 @@ Run a Hermes Local Memory reflection + consolidation job.
 Repository: /path/to/hermes-local-memory
 Database: ~/.hermes/memory/local_memory.sqlite
 
-Use Hermes Agent reasoning to make maintenance decisions. Use Local Memory as the auditable substrate.
-Never modify raw messages. Never switch live Hermes provider config.
+Use Hermes Agent reasoning to make maintenance decisions. Use Local Memory's provider tools as the auditable substrate.
+Never modify raw messages. Never switch live Hermes provider config. Do not use direct SQLite edits for normal maintenance.
+
+Phase 0: Backup and identity review
+- Create a timestamped backup of the SQLite database before any apply step.
+- Call `memory_build_peer_review_packet(limit=100)`.
+- If an alias move is deterministic and unambiguous, validate with `memory_apply_peer_review_patch(apply=false)` before applying with `apply=true`; otherwise only report a human prompt.
 
 Phase 1: Reflection / distillation
-- Run reflection-maintenance for stale sessions first.
+- Call `memory_build_reflection_packets(min_messages=20, max_messages=100)` for stale sessions first.
 - Review each reflection packet and create reflection patches only for facts clearly supported by packet message IDs.
 - New memories from reflection must be candidate facts, not active facts.
 - Add session summaries only for the exact message windows reviewed.
-- Validate each reflection patch with apply-reflection-patch --dry-run before applying.
+- Validate each reflection patch with `memory_apply_reflection_patch(apply=false)` before applying.
+- Apply only narrow, evidence-backed reflection patches with `memory_apply_reflection_patch(apply=true)`.
 - Skip sessions that are noisy, identity-confused, too large, or ambiguous.
 
 Phase 2: Conservative all-pairs maintenance
-- Run all-pairs maintenance with --dry-run.
+- Run `memory_maintenance(promote_candidates=true, apply=false, limit=200)`.
 - Inspect the compact changed-pair summary.
-- Apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions.
+- Apply only if the dry-run is small and low-risk: duplicate supersedes and high-confidence local/reflection candidate promotions. Do not bulk-promote imported Honcho candidates.
+- If safe, apply with `memory_maintenance(promote_candidates=true, apply=true, limit=200)`; otherwise skip and report.
+- For noisy imported candidates, use `memory_build_candidate_review_packet` plus `memory_apply_candidate_review_patch` rather than broad maintenance apply.
 - Do not append every active fact into cards; cards are compact synthesized views.
-- Use card-review or a validated `card_replace` patch when a card needs synthesis/cleanup.
+- Use `memory_build_card_review_packet` plus `memory_apply_card_review_patch` when a card needs synthesis/cleanup.
 - Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
 
-Report exactly: reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
+Phase 3: Verification
+- Verify important peers with `memory_context`, `memory_search`, and `memory_get_card`.
+- Report exactly: backup path, peer-review issues, reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, whether changes were applied, and why.
 ```
 
 Prudent/report-only variant for new deployments, risky imports, or cautious operators:

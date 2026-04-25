@@ -38,14 +38,23 @@ def test_write_plugin_shim_creates_hermes_discoverable_register_function(tmp_pat
     assert collector.provider is not None
     assert collector.provider.name == "local"
     assert {schema["name"] for schema in collector.provider.get_tool_schemas()} == {
-        "memory_profile",
+        "memory_get_card",
+        "memory_set_card",
         "memory_search",
         "memory_context",
         "memory_conclude",
         "memory_consolidate",
         "memory_maintenance",
-        "memory_peer_review",
-        "memory_reflection_maintenance",
+        "memory_build_peer_review_packet",
+        "memory_apply_peer_review_patch",
+        "memory_build_reflection_packets",
+        "memory_apply_reflection_patch",
+        "memory_build_candidate_review_packet",
+        "memory_apply_candidate_review_patch",
+        "memory_build_card_review_packet",
+        "memory_apply_card_review_patch",
+        "memory_build_honcho_migration_review_packet",
+        "memory_apply_honcho_migration_review_patch",
     }
 
 

@@ -42,7 +42,7 @@ prompt injection
   identity + compact card + durable facts + session summaries/retrieval
 ```
 
-Reflection should run before consolidation in scheduled maintenance. Candidate facts should generally not be injected into ordinary prompts unless the task is memory review. Do not bulk-promote imported Honcho candidates, and do not append all active facts into cards; cards are compact synthesized views.
+Reflection should run before consolidation in scheduled maintenance. Candidate facts should generally not be injected into ordinary prompts unless the task is memory review. Do not bulk-promote imported Honcho candidates through deterministic maintenance, but do review high-signal Honcho memories during first migration with the Honcho migration review tools and use selected imports to rebuild cards. Do not append all active facts into cards; cards are compact synthesized views.
 
 ## Current package layout
 
@@ -107,16 +107,19 @@ Full setup/adoption instructions live in `docs/setup.md`. Release steps live in 
 
 ## Scheduled maintenance guidance
 
-Do not add a scheduler to this package. Instruct Hermes Agent to create a recurring Hermes cron job that:
+Do not add a scheduler to this package. The reusable agent workflow is packaged in `skills/local-memory-maintenance/SKILL.md`; instruct humans and Hermes Agent to install/attach/load that skill before creating a recurring Hermes cron job that:
 
-1. runs `peer-review-packet` and resolves obvious aliases or emits human prompts,
-2. runs `reflection-maintenance` for stale sessions,
-3. has Hermes review reflection packets and produce reflection patches,
-4. validates/applies safe reflection patches,
-5. runs all-pairs `maintenance --dry-run`,
-6. applies only bounded fact-lifecycle changes such as duplicate supersedes or high-confidence local/reflection candidate promotions,
-7. uses card review or validated `card_replace` patches for compact card synthesis/cleanup,
-8. reports peer prompts, reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations.
+1. creates a timestamped SQLite backup before any apply step,
+2. runs `memory_build_peer_review_packet` and resolves only deterministic aliases through `memory_apply_peer_review_patch`, otherwise emits human prompts,
+3. runs `memory_build_reflection_packets` for stale sessions,
+4. has Hermes review reflection packets and produce evidence-linked reflection patches,
+5. validates/applies safe reflection patches with `memory_apply_reflection_patch`,
+6. runs all-pairs `memory_maintenance(promote_candidates=true, apply=false)`,
+7. applies only bounded fact-lifecycle changes such as duplicate supersedes or high-confidence local/reflection candidate promotions,
+8. during first Honcho migration, uses `memory_build_honcho_migration_review_packet` plus `memory_apply_honcho_migration_review_patch` to promote selected high-signal Honcho memories and rebuild compact cards,
+9. uses `memory_build_candidate_review_packet` for remaining noisy candidates and `memory_build_card_review_packet` plus `memory_apply_card_review_patch` for compact card synthesis/cleanup,
+10. verifies with `memory_context`, `memory_search`, and `memory_get_card`,
+11. reports peer prompts, reflected sessions, candidate facts, summaries, Honcho migration review changes, changed pairs, skipped pairs, and escalations.
 
 Recommended starting cadence: nightly. High-volume deployments can move to every 6 hours once dry-run reports are clean.
 

@@ -104,23 +104,53 @@ def test_provider_exposes_memory_tools_and_can_write_profile_card(tmp_path: Path
 
     tool_names = {schema["name"] for schema in provider.get_tool_schemas()}
     assert tool_names == {
-        "memory_profile",
+        "memory_get_card",
+        "memory_set_card",
         "memory_search",
         "memory_context",
         "memory_conclude",
         "memory_consolidate",
         "memory_maintenance",
-        "memory_peer_review",
-        "memory_reflection_maintenance",
+        "memory_build_peer_review_packet",
+        "memory_apply_peer_review_patch",
+        "memory_build_reflection_packets",
+        "memory_apply_reflection_patch",
+        "memory_build_candidate_review_packet",
+        "memory_apply_candidate_review_patch",
+        "memory_build_card_review_packet",
+        "memory_apply_card_review_patch",
+        "memory_build_honcho_migration_review_packet",
+        "memory_apply_honcho_migration_review_patch",
     }
 
-    write_result = parse_tool_result(
+    legacy_write = json.loads(
         provider.handle_tool_call(
             "memory_profile",
             {"card": ["Name: Alice", "Prefers local-first memory"]},
         )
     )
+    assert legacy_write["success"] is False
+    assert "action='set'" in legacy_write["error"]
+
+    write_result = parse_tool_result(
+        provider.handle_tool_call(
+            "memory_profile",
+            {"action": "set", "card": ["Name: Alice", "Prefers local-first memory"]},
+        )
+    )
     assert write_result["card"] == ["Name: Alice", "Prefers local-first memory"]
+    assert write_result["diff"] == {
+        "before": [],
+        "after": ["Name: Alice", "Prefers local-first memory"],
+        "added": ["Name: Alice", "Prefers local-first memory"],
+        "removed": [],
+    }
+
+    empty_write = json.loads(
+        provider.handle_tool_call("memory_profile", {"action": "set", "card": []})
+    )
+    assert empty_write["success"] is False
+    assert "allow_empty=true" in empty_write["error"]
 
     read_result = parse_tool_result(provider.handle_tool_call("memory_profile", {}))
     assert read_result["card"] == ["Name: Alice", "Prefers local-first memory"]
@@ -176,7 +206,7 @@ def test_provider_context_injection_is_source_labeled(tmp_path: Path) -> None:
 def test_provider_consolidate_previews_and_applies_candidate_promotion(tmp_path: Path) -> None:
     provider = make_provider(tmp_path)
     provider.handle_tool_call(
-        "memory_profile",
+        "memory_set_card",
         {"card": ["Name: Alice"]},
     )
     store = provider.store

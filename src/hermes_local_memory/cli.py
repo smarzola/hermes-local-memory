@@ -28,6 +28,10 @@ from hermes_local_memory.honcho_import import (
     plan_honcho_export_import,
     plan_honcho_import,
 )
+from hermes_local_memory.honcho_migration_review import (
+    apply_honcho_migration_review_patch,
+    build_honcho_migration_review_packet,
+)
 from hermes_local_memory.peer_review import apply_peer_review_patch, build_peer_review_packet
 from hermes_local_memory.reflection import (
     apply_reflection_patch,
@@ -173,6 +177,34 @@ def build_parser() -> argparse.ArgumentParser:
     card_mode.add_argument("--dry-run", action="store_true")
     card_mode.add_argument("--apply", action="store_true")
     apply_card.add_argument("--json", action="store_true", help="Print JSON")
+
+    honcho_review = sub.add_parser(
+        "honcho-migration-review-packet",
+        help="Build a first-migration packet for reviewing imported Honcho memories",
+    )
+    honcho_review.add_argument("--peer", required=True, help="Subject peer id or alias")
+    honcho_review.add_argument("--observer", required=True, help="Observer peer id or alias")
+    honcho_review.add_argument(
+        "--source",
+        default="honcho-api-conclusion",
+        help="Imported Honcho candidate source filter",
+    )
+    honcho_review.add_argument("--max-candidates", type=int, default=100)
+    honcho_review.add_argument("--max-active", type=int, default=50)
+    honcho_review.add_argument("--json", action="store_true", help="Print JSON")
+
+    apply_honcho_review = sub.add_parser(
+        "apply-honcho-migration-review-patch",
+        help="Validate or apply a first-migration Honcho candidate/card review patch",
+    )
+    apply_honcho_review.add_argument(
+        "patch_file",
+        help="Path to Honcho migration review patch JSON",
+    )
+    honcho_review_mode = apply_honcho_review.add_mutually_exclusive_group()
+    honcho_review_mode.add_argument("--dry-run", action="store_true")
+    honcho_review_mode.add_argument("--apply", action="store_true")
+    apply_honcho_review.add_argument("--json", action="store_true", help="Print JSON")
 
     peer_packet = sub.add_parser(
         "peer-review-packet",
@@ -548,6 +580,33 @@ def main(argv: list[str] | None = None) -> int:
             max_candidates=10000,
         )
         result = apply_card_review_patch(store, packet, patch, apply=args.apply)
+        _print_one(result, as_json=args.json)
+        return 0
+    if args.command == "honcho-migration-review-packet":
+        peer_id = _resolve_required_peer_id(store, args.peer)
+        observer_id = _resolve_required_peer_id(store, args.observer)
+        packet = build_honcho_migration_review_packet(
+            store,
+            subject_peer_id=peer_id,
+            observer_peer_id=observer_id,
+            source=args.source,
+            max_candidates=args.max_candidates,
+            max_active=args.max_active,
+        )
+        _print_one(packet, as_json=args.json)
+        return 0
+    if args.command == "apply-honcho-migration-review-patch":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        patch = json.loads(Path(args.patch_file).expanduser().read_text(encoding="utf-8"))
+        packet = build_honcho_migration_review_packet(
+            store,
+            subject_peer_id=patch["subject_peer_id"],
+            observer_peer_id=patch["observer_peer_id"],
+            max_candidates=10000,
+            max_active=10000,
+        )
+        result = apply_honcho_migration_review_patch(store, packet, patch, apply=args.apply)
         _print_one(result, as_json=args.json)
         return 0
     if args.command == "peer-review-packet":

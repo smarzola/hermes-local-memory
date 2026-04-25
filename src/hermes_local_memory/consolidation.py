@@ -19,9 +19,12 @@ def build_consolidation_plan(
 ) -> dict[str, Any]:
     """Preview or apply deterministic local memory consolidation.
 
-    MVP consolidation is deliberately boring: it merges active facts into the
-    compact card, optionally promotes non-duplicate candidate facts, and marks
-    duplicate candidates as superseded. It does not call an LLM or delete rows.
+    Consolidation is deliberately boring: it uses active facts and current card
+    lines for duplicate detection, optionally promotes safe non-duplicate
+    candidate facts, proposes card additions for newly promoted candidates, and
+    bootstraps an empty card from high-confidence non-imported active facts. It
+    does not call an LLM, delete rows, or append every active fact into an
+    existing compact card.
     """
 
     current_card = store.get_card(
@@ -64,6 +67,13 @@ def build_consolidation_plan(
             norm = _normalize_line(fact["content"])
             if fact["id"] in promoted_ids and norm not in card_addition_norms:
                 card_additions.append(fact["content"])
+                card_addition_norms.add(norm)
+
+    if not current_card and active_facts:
+        for item in _bootstrap_card_from_active_facts(store, subject_peer_id, active_facts):
+            norm = _normalize_line(item)
+            if norm not in card_addition_norms:
+                card_additions.append(item)
                 card_addition_norms.add(norm)
 
     proposed_card = [*current_card, *card_additions]
@@ -354,6 +364,34 @@ def _fact_ref(fact: dict[str, Any], *, reason: str) -> dict[str, Any]:
         "source": fact.get("source"),
         "reason": reason,
     }
+
+
+def _bootstrap_card_from_active_facts(
+    store: LocalMemoryStore,
+    subject_peer_id: str,
+    active_facts: list[dict[str, Any]],
+) -> list[str]:
+    """Create a minimal card only when a peer has no card but has active facts."""
+
+    subject = store.resolve_peer(subject_peer_id)
+    display_name = (subject or {}).get("display_name") or subject_peer_id
+    additions = [f"Name: {display_name}"]
+    for fact in active_facts:
+        if _is_safe_card_bootstrap_fact(fact):
+            additions.append(str(fact["content"]))
+    return additions
+
+
+def _is_safe_card_bootstrap_fact(fact: dict[str, Any]) -> bool:
+    try:
+        confidence = float(fact.get("confidence") or 0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    source = str(fact.get("source") or "")
+    if source.startswith("honcho-api") or source.startswith("honcho-"):
+        return False
+    safe_kinds = {"identity", "personal", "preference", "relation"}
+    return confidence >= 0.9 and fact.get("kind") in safe_kinds
 
 
 def _is_safe_auto_promotion_candidate(fact: dict[str, Any]) -> bool:

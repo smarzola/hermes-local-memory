@@ -42,6 +42,69 @@ def test_maintenance_does_not_append_active_facts_to_existing_cards(tmp_path: Pa
     ]
 
 
+def test_maintenance_repairs_empty_cards_from_high_confidence_active_facts(
+    tmp_path: Path,
+) -> None:
+    store = LocalMemoryStore(tmp_path / "memory.sqlite")
+    store.initialize()
+    store.upsert_peer("andra", display_name="Andra", kind="human")
+    store.upsert_peer("bob", display_name="Bob", kind="ai")
+    store.add_fact(
+        subject_peer_id="andra",
+        observer_peer_id="bob",
+        content="Andra is Simone's wife.",
+        kind="relation",
+        status="active",
+        source="conversation",
+        confidence=1.0,
+    )
+    store.add_fact(
+        subject_peer_id="andra",
+        observer_peer_id="bob",
+        content=(
+            "Andra and Simone are expecting a newborn with planned delivery date "
+            "June 16, 2026."
+        ),
+        kind="personal",
+        status="active",
+        source="conversation",
+        confidence=1.0,
+    )
+
+    plan = build_consolidation_plan(
+        store,
+        subject_peer_id="andra",
+        observer_peer_id="bob",
+        promote_candidates=True,
+        apply=False,
+    )
+
+    assert plan["mode"] == "dry-run"
+    assert plan["counts"]["card_additions"] == 3
+    assert plan["card_additions"][0] == "Name: Andra"
+    assert set(plan["card_additions"][1:]) == {
+        "Andra is Simone's wife.",
+        "Andra and Simone are expecting a newborn with planned delivery date June 16, 2026.",
+    }
+    assert store.get_card(subject_peer_id="andra", observer_peer_id="bob") == []
+
+    applied = build_consolidation_plan(
+        store,
+        subject_peer_id="andra",
+        observer_peer_id="bob",
+        promote_candidates=True,
+        apply=True,
+    )
+
+    assert applied["writes"]["card_replaced"] is True
+    card = store.get_card(subject_peer_id="andra", observer_peer_id="bob")
+    assert card[0] == "Name: Andra"
+    assert set(card[1:]) == {
+        "Andra is Simone's wife.",
+        "Andra and Simone are expecting a newborn with planned delivery date June 16, 2026.",
+    }
+
+
 def test_imported_honcho_candidates_are_not_bulk_promoted(tmp_path: Path) -> None:
     store = LocalMemoryStore(tmp_path / "memory.sqlite")
     store.initialize()

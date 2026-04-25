@@ -235,19 +235,21 @@ Context injection
 
 Reflection is the explicit replacement for opaque "dreaming". It does not run hidden model calls in the storage layer. Instead, Local Memory builds source-labeled packets, Hermes Agent reasons over them, and Local Memory validates structured patches before writing candidates and summaries.
 
-Consolidation is downstream from reflection. It assumes candidate facts already exist and focuses on conservative fact lifecycle changes. Card quality is handled explicitly through `memory_profile`, `card-review-packet`, or validated consolidation patches with full `card_replace`; ordinary maintenance should not append every active fact into cards.
+Consolidation is downstream from reflection. It assumes candidate facts already exist and focuses on conservative fact lifecycle changes. It may bootstrap an empty compact card from high-confidence non-imported active facts, but card quality for already-populated cards is handled explicitly through `memory_set_card`, `memory_build_card_review_packet` / `memory_apply_card_review_patch`, or validated consolidation patches with full `card_replace`; ordinary maintenance should not append every active fact into existing cards.
 
 ## Current provider tools
 
-### `memory_profile`
+### `memory_get_card` / `memory_set_card`
 
-Read or replace a compact peer card.
+Read or explicitly replace a compact peer card.
 
 Use cases:
 
-- Get a quick profile snapshot.
-- Write a curated card after migration or consolidation.
+- Get a quick profile snapshot with `memory_get_card(peer="alice")`.
+- Write a curated card after migration or consolidation with `memory_set_card(peer="alice", card=[...])`.
 - Keep high-value identity/preferences cheap to inject.
+
+Writes require `action="set"`. Passing `card=[...]` without `action="set"` is rejected, and empty-card replacement is rejected unless `allow_empty=true` is provided. Successful writes return a before/after diff.
 
 ### `memory_search`
 
@@ -271,7 +273,25 @@ Current behavior:
 - stores facts with `source=manual`
 - links evidence to the latest synced user message when available
 
-Future behavior should add replace/retract actions and candidate fact workflows.
+Future behavior should add replace/retract actions.
+
+### Maintenance/review tools
+
+The provider exposes the full agent-side maintenance cycle, not only CLI commands:
+
+- `memory_build_peer_review_packet` builds identity review packets.
+- `memory_apply_peer_review_patch` validates/applies deterministic alias-review patches.
+- `memory_build_reflection_packets` builds stale raw-message reflection packets.
+- `memory_apply_reflection_patch` validates/applies evidence-linked reflection patches, writing candidate facts and session summaries.
+- `memory_build_candidate_review_packet` builds scoped candidate fact review packets.
+- `memory_apply_candidate_review_patch` validates/applies candidate promotion/supersede/retraction and compact card additions.
+- `memory_maintenance` runs conservative all-pairs deterministic consolidation dry-runs/applies.
+- `memory_build_card_review_packet` builds compact card review packets.
+- `memory_apply_card_review_patch` validates/applies full-card replacement patches.
+- `memory_build_honcho_migration_review_packet` builds first-migration Honcho candidate/card review packets.
+- `memory_apply_honcho_migration_review_patch` validates/applies selected Honcho candidate adoption plus card rebuild patches.
+
+CLI equivalents remain useful for offline inspection, migration work, and deeper JSON output, but scheduled Hermes cron jobs should prefer provider tools when available.
 
 ## Context injection
 
@@ -347,9 +367,10 @@ Migration from Honcho or any other memory system should be additive:
 3. Import aliases for old names and platform IDs.
 4. Import cards as cards and/or candidate facts.
 5. Import derived documents as candidate or active facts depending on confidence.
-6. Verify with search/context before switching providers.
+6. Review imported Honcho candidates as first-migration material; promote selected high-signal stable facts and use them to rebuild compact cards through `memory_build_honcho_migration_review_packet` / `memory_apply_honcho_migration_review_patch`.
+7. Verify with search/context before switching providers.
 
-No migration should require pretending old history is disposable.
+No migration should require pretending old history is disposable. Imported Honcho memories are not blindly trusted, but they are also not ignored: they are reviewable source material for rebuilding useful cards.
 
 ## Roadmap
 

@@ -42,14 +42,17 @@ Hermes Local Memory is opinionated in the other direction:
 
 | Tool | Purpose |
 | --- | --- |
-| `memory_profile` | Read or replace compact peer cards. |
+| `memory_get_card` / `memory_set_card` | Read compact peer cards, or explicitly replace full cards with diffs; empty writes require `allow_empty=true`. |
 | `memory_search` | Search active durable facts through SQLite FTS5. |
 | `memory_context` | Show exactly what local memory would inject into the prompt. |
 | `memory_conclude` | Add durable facts with evidence links to the most recent synced user turn. |
-| `memory_consolidate` | Preview/apply deterministic fact lifecycle maintenance for one peer. It can promote safe candidates and supersede duplicates; it does not append every active fact into the card. |
+| `memory_consolidate` | Preview/apply deterministic fact lifecycle maintenance for one peer. It can promote safe candidates, supersede duplicates, and bootstrap empty cards from safe active facts; it does not append every active fact into existing cards. |
 | `memory_maintenance` | Preview/apply deterministic fact lifecycle maintenance across all subject/observer pairs; provider results are compact summaries suitable for scheduled jobs. |
-| `memory_peer_review` | Build peer review packets so the agent can maintain aliases and escalate ambiguous identities. |
-| `memory_reflection_maintenance` | Build reflection packets for stale sessions before consolidation. |
+| `memory_build_peer_review_packet` / `memory_apply_peer_review_patch` | Build and apply peer-review patches so the agent can maintain aliases and escalate ambiguous identities. |
+| `memory_build_reflection_packets` / `memory_apply_reflection_patch` | Build reflection packets for stale sessions and apply evidence-linked candidate facts plus summaries. |
+| `memory_build_candidate_review_packet` / `memory_apply_candidate_review_patch` | Review noisy candidate facts safely without broad promotion. |
+| `memory_build_card_review_packet` / `memory_apply_card_review_patch` | Review compact cards and apply full-card replacement patches. |
+| `memory_build_honcho_migration_review_packet` / `memory_apply_honcho_migration_review_patch` | Review first-migration Honcho candidates and compact card rebuilds together. |
 
 ### CLI capabilities
 
@@ -358,10 +361,21 @@ Then pass:
 --identity-map ~/.hermes/local-memory-identity-map.json
 ```
 
-After import, treat candidate facts and imported cards as separate review steps. Honcho-derived conclusions are intentionally imported as candidates and deterministic maintenance will not bulk-promote them; review high-signal memories explicitly:
+After import, treat Honcho candidate facts and imported cards as first-migration review material, not as disposable noise. Honcho-derived conclusions are intentionally imported as candidates and deterministic maintenance will not bulk-promote them, but the first migration should actively review high-signal memories and use selected ones to rebuild compact cards:
 
-1. use `candidate-review-packet` / `apply-candidate-review-patch` to promote only high-signal imported candidate facts;
-2. use `card-review-packet` / `apply-card-review-patch` to clean imported cards so compact prompt context does not inherit stale, duplicate, or task-local lines.
+1. in an agent session, use `memory_build_honcho_migration_review_packet` / `memory_apply_honcho_migration_review_patch` to promote selected high-signal Honcho candidates and apply a compact card rebuild in one validated review flow;
+2. outside Hermes Agent, use CLI `honcho-migration-review-packet` / `apply-honcho-migration-review-patch` for the same combined candidate/card review;
+3. use ordinary candidate/card review later for remaining noisy candidates or card cleanup.
+
+Example combined Honcho migration review packet:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory_trial.sqlite \
+  honcho-migration-review-packet \
+  --peer alice \
+  --observer bob \
+  --json
+```
 
 Example card cleanup packet:
 
@@ -455,7 +469,7 @@ Reflection is the distillation step: stale raw-message windows become evidence-b
 
 That means ordinary maintenance deliberately does **not** append every active fact into a card. If a card needs cleanup or synthesis, use `card-review-packet` / `apply-card-review-patch` or a validated consolidation patch with `card_replace`. This keeps prompt context small, auditable, and human/agent-readable.
 
-Imported Honcho conclusions are especially noisy, so they remain candidates until explicitly reviewed. Large candidate-promotion counts in maintenance dry-runs should be treated as a tooling or policy regression, not something to blindly apply.
+Imported Honcho conclusions are mixed-quality rather than worthless. They remain candidates so deterministic maintenance cannot blindly bulk-promote them, but first migration should explicitly review high-signal Honcho memories and use selected ones to rebuild cards. Large candidate-promotion counts in ordinary maintenance dry-runs should still be treated as a tooling or policy regression, not something to blindly apply.
 
 Why maintenance is needed:
 
@@ -625,26 +639,26 @@ Use Local Memory as the auditable substrate and use Hermes reasoning for judgmen
 Never modify raw messages. Never switch the live Hermes provider config.
 
 Phase 1: Peer review / identity maintenance
-- Run peer-review-packet first.
+- Call `memory_build_peer_review_packet` first.
 - If a new platform peer clearly maps to an existing canonical peer, produce a peer-review patch that moves only the alias.
 - If identity is ambiguous, produce a human prompt with the concrete peer id, aliases, and question instead of guessing.
-- Validate each peer-review patch with apply-peer-review-patch --dry-run before applying.
+- Validate each peer-review patch with `memory_apply_peer_review_patch(apply=false)` before applying with `apply=true`.
 - Do not delete peer rows or rewrite raw message history.
 
 Phase 2: Reflection / distillation
-- Run reflection-maintenance for stale sessions after peer review.
+- Call `memory_build_reflection_packets` for stale sessions after peer review.
 - Review each reflection packet and create reflection patches only for facts clearly supported by packet message IDs.
 - New memories from reflection must be candidate facts, not active facts.
 - Add session summaries only for the exact message windows reviewed.
-- Validate each reflection patch with apply-reflection-patch --dry-run before applying.
+- Validate each reflection patch with `memory_apply_reflection_patch(apply=false)` before applying with `apply=true`.
 - Skip sessions that are noisy, identity-confused, too large, or ambiguous.
 
 Phase 3: Conservative all-pairs maintenance
-- Run all-pairs maintenance with --dry-run.
+- Call `memory_maintenance(promote_candidates=true, apply=false)` for an all-pairs dry run.
 - Inspect the compact summary of changed pairs.
 - Apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions.
 - Do not treat active facts as automatic card additions; cards are compact synthesized views.
-- If a card needs cleanup, build a card-review packet or consolidation packet and apply a validated full-card replacement.
+- If a card needs cleanup, call `memory_build_card_review_packet` and apply a validated full-card replacement with `memory_apply_card_review_patch`.
 - Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
 
 Report exactly: peer aliases moved, human identity prompts, reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
@@ -661,7 +675,7 @@ This gives both modes:
 - **autonomous by default** for well-scoped, well-validated maintenance
 - **report-only** when a human wants extra caution
 
-To schedule this from Hermes, create a recurring Hermes cron job with a self-contained version of the prompt above. Recommended starting schedule: nightly. High-volume deployments can move to every 6 hours after the dry-run reports look clean.
+To schedule this from Hermes, install/attach/load the packaged `local-memory-maintenance` skill from `skills/local-memory-maintenance/SKILL.md` and create a recurring Hermes cron job with a self-contained version of the prompt above. If the package was installed from PyPI, copy or register that packaged skill in the target Hermes skills directory before creating the cron job. Recommended starting schedule: nightly. High-volume deployments can move to every 6 hours after the dry-run reports look clean.
 
 ## Documentation
 

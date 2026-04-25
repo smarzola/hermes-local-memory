@@ -24,3 +24,19 @@ def test_pypi_publish_workflow_is_tag_only_and_uses_trusted_publishing() -> None
     assert "ruff check ." in workflow
     assert "pytest" in workflow
     assert "password:" not in workflow
+
+
+def test_publish_workflow_builds_artifacts_before_publishing() -> None:
+    workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
+
+    assert "python -m build" in workflow
+    assert "python -m twine check dist/*" in workflow
+    assert "pypa/gh-action-pypi-publish@release/v1" in workflow
+
+
+def test_publish_workflow_uses_pypi_environment_for_trusted_publishing() -> None:
+    workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
+
+    assert "environment:" in workflow
+    assert "name: pypi" in workflow
+    assert "id-token: write" in workflow

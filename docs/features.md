@@ -63,7 +63,7 @@ Sessions represent conversation lanes. A Telegram DM, CLI conversation, or group
 
 ### Peer cards
 
-`memory_profile` reads or replaces a compact peer card. Cards are optimized for cheap context injection and quick inspection. They are **compact synthesized views**, not append-only mirrors of the fact table. Ordinary maintenance must not blindly append every active fact into a card; card cleanup/synthesis should happen through `card-review-packet` / `apply-card-review-patch` or a validated consolidation patch with a full `card_replace`.
+`memory_get_card` reads a compact peer card. `memory_set_card` explicitly replaces a full compact peer card and returns a before/after diff. Empty-card replacement is rejected unless `allow_empty=true` is provided. Cards are optimized for cheap context injection and quick inspection. They are **compact synthesized views**, not append-only mirrors of the fact table. Ordinary maintenance must not blindly append every active fact into an existing card; card cleanup/synthesis should happen through `card-review-packet` / `apply-card-review-patch` or a validated consolidation patch with a full `card_replace`.
 
 ### Deterministic search
 
@@ -96,14 +96,23 @@ context = provider.prefetch("X")
 ```
 
 The provider exposes these tool schemas:
-- `memory_profile`
+- `memory_get_card`
+- `memory_set_card`
 - `memory_search`
 - `memory_context`
 - `memory_conclude`
 - `memory_consolidate`
 - `memory_maintenance`
-- `memory_peer_review`
-- `memory_reflection_maintenance`
+- `memory_build_peer_review_packet`
+- `memory_apply_peer_review_patch`
+- `memory_build_reflection_packets`
+- `memory_apply_reflection_patch`
+- `memory_build_candidate_review_packet`
+- `memory_apply_candidate_review_patch`
+- `memory_build_card_review_packet`
+- `memory_apply_card_review_patch`
+- `memory_build_honcho_migration_review_packet`
+- `memory_apply_honcho_migration_review_patch`
 
 ## Additional feature areas
 
@@ -227,6 +236,8 @@ Reflection should run before consolidation in scheduled maintenance.
 
 Candidate review is the safe adoption path for noisy imported memories. It builds a source-filterable packet for one subject/observer pair, lets Hermes Agent choose narrow actions, and validates a structured patch before changing fact status or compact card items.
 
+First Honcho migration has a combined review helper: `memory_build_honcho_migration_review_packet` / `memory_apply_honcho_migration_review_patch` in agent sessions, or CLI `honcho-migration-review-packet` / `apply-honcho-migration-review-patch` outside Hermes. This flow treats Honcho candidates as valuable migration material while still preventing deterministic bulk promotion: selected high-signal candidates can be promoted and used to rebuild compact cards in one audited patch.
+
 Supported actions:
 
 - promote candidate facts to `active`
@@ -266,11 +277,12 @@ Consolidation is explicit, deterministic, and inspectable. It is conservative by
 1. reads the current peer card, active facts, and candidate facts for a subject/observer pair
 2. supersedes candidate facts that duplicate an existing card line or active fact
 3. optionally promotes only safe candidates: high-confidence local/reflection candidates are eligible, while imported Honcho candidates remain candidates until explicit review
-4. proposes card additions only for newly promoted safe candidates, not for every existing active fact
-5. can run for one pair or all subject/observer pairs with cards/facts
-6. applies only with `--apply` or `memory_consolidate({"apply": true})`
+4. proposes card additions for newly promoted safe candidates, not for every existing active fact
+5. bootstraps an empty card from high-confidence non-imported active facts, so peers with durable facts are not left with `(no card)`
+6. can run for one pair or all subject/observer pairs with cards/facts
+7. applies only with `--apply` or `memory_consolidate({"apply": true})`
 
-Cards remain compact synthesized views. If active facts should be folded into a better profile card, use card review or a validated consolidation patch with `card_replace`; do not rely on maintenance to grow the card.
+Cards remain compact synthesized views. Ordinary maintenance must not grow an already-populated card by appending every active fact. If an existing card needs synthesis or cleanup, use card review or a validated consolidation patch with `card_replace`.
 
 CLI examples:
 
