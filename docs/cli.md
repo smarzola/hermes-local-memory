@@ -25,10 +25,11 @@ Current write commands are explicit repair/mutation commands:
 - `alias add` / `alias move`
 - `fact add` / `fact retract`
 - `card replace`
+- `consolidate --apply`
 
 `install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
 
-Repair commands are intentionally explicit: they name the object being changed and return the changed row, preferably as JSON for auditability. They do not perform automatic consolidation or hidden rewrites.
+Repair and consolidation commands are intentionally explicit: they name the object being changed and return the changed row or plan, preferably as JSON for auditability. They do not perform hidden rewrites. `consolidate --dry-run` is read-only; `consolidate --apply` is the mutating form.
 
 ## Database selection
 
@@ -191,6 +192,40 @@ Apply mode is additive and idempotent:
 - the active Hermes memory provider is not switched
 - an existing target DB is backed up automatically unless `--no-backup` is passed
 
+### Consolidate facts and cards
+
+Consolidation produces an inspectable plan for a subject/observer pair. Dry-run is read-only:
+
+```bash
+hermes-local-memory --db memory.sqlite consolidate \
+  --peer simone \
+  --observer ambrogio \
+  --promote-candidates \
+  --dry-run \
+  --json
+```
+
+Apply only after reviewing the plan:
+
+```bash
+hermes-local-memory --db memory.sqlite consolidate \
+  --peer simone \
+  --observer ambrogio \
+  --promote-candidates \
+  --apply \
+  --json
+```
+
+Current deterministic behavior:
+
+- reads current card, active facts, and candidate facts
+- supersedes candidate facts that duplicate existing card lines or active facts
+- optionally promotes unique candidate facts when `--promote-candidates` is passed
+- proposes card additions from active facts and promoted candidates
+- never deletes raw messages or facts
+
+For imported Honcho data, expect many noisy candidate facts. Prefer dry-run reports and selective review over broad auto-apply.
+
 ### Plan a Honcho SQLite fixture import
 
 The SQLite importer is a fallback for tests, fixtures, and local forensic work where a Honcho-shaped SQLite export is available:
@@ -260,6 +295,39 @@ hermes-local-memory --db memory.sqlite card replace \
 ```
 
 Full replacement is intentional: it makes card repair auditable and avoids hidden merge behavior.
+
+## Scheduled maintenance with Hermes cron
+
+This package intentionally does not embed its own scheduler. If you want regular memory maintenance, use Hermes' scheduling/cron layer to run local-memory commands and deliver reports.
+
+Recommended safe pattern:
+
+1. schedule dry-run reports first
+2. review noisy or large plans manually
+3. only later schedule narrow apply jobs for validated patches or tightly-scoped databases
+4. never let a broad imported Honcho candidate set auto-promote itself without review
+
+Example scheduled job prompt:
+
+```text
+Run a weekly Hermes Local Memory maintenance dry-run.
+Repository: /home/smarzola/hermes-local-memory
+Database: ~/.hermes/memory/local_memory_trial_mapped.sqlite
+
+Commands:
+cd /home/smarzola/hermes-local-memory
+PYTHONPATH=src python -m hermes_local_memory.cli --db ~/.hermes/memory/local_memory_trial_mapped.sqlite consolidate --peer simone --observer ambrogio --promote-candidates --dry-run --json
+
+Do not apply changes. Summarize counts, top proposed card additions, top candidate promotions/supersedes, and whether the plan looks safe or noisy. Deliver the summary to the originating chat.
+```
+
+For a future agent-assisted workflow, the scheduled job should ask Hermes to produce a structured patch and then stop for review:
+
+```text
+SQLite packet -> Hermes Agent reasoning -> structured patch -> validation/diff -> human-approved apply
+```
+
+The memory backend should remain local and deterministic; Hermes should own model calls and scheduled orchestration.
 
 ## Agent usage pattern
 

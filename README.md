@@ -1,52 +1,83 @@
 # Hermes Local Memory
 
-Local-first SQLite memory for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
+**Local-first, inspectable, agent-integrated memory for Hermes Agent.**
 
-This project is an open-source, boring-engineering replacement for server-shaped agent memory stacks. It is inspired by the useful parts of Honcho — peers, profiles, cards, search, consolidation — but is designed to run locally as a Hermes memory plugin with no API server, no Docker, no Redis, and no Postgres.
+Hermes Local Memory is an open-source SQLite memory provider for [Hermes Agent](https://github.com/NousResearch/hermes-agent). It is built for people who want the useful parts of agent memory — profiles, aliases, raw history, facts, cards, search, context injection, migration, and consolidation — without running a separate memory server or trusting an opaque background "dream" system.
 
-> Status: pre-alpha. The first milestone is the local SQLite store and deterministic retrieval core. The Hermes plugin wrapper and Honcho importer come next.
+The core idea is simple:
 
-## Goals
+> Memory should be a local, auditable substrate that the agent can inspect, reason over, and update through explicit tools — not an opaque appendix bolted onto the side of the agent.
 
-- **Local-only by default** — one SQLite database under the user's Hermes home.
-- **Multi-profile and multi-peer** — separate Hermes profiles, humans, assistants, groups, and aliases.
-- **Migration-safe** — preserve raw history; derived facts/cards can be rebuilt.
-- **Inspectable** — every injected memory line should be traceable to stored facts or summaries.
-- **Agent-friendly** — clear APIs, tests, docs, and contribution instructions so humans and coding agents can extend it.
-- **Boring first** — deterministic FTS/search/context before optional embeddings or LLM consolidation.
+This project is inspired by the good ideas in Honcho, especially peers/cards/consolidation, but deliberately chooses boring engineering: one local SQLite DB, explicit identity mapping, deterministic retrieval, source-labeled context, dry-runs before writes, and agent-generated patches instead of hidden backend mutation.
 
-## Non-goals
+> Status: **pre-alpha but functional**. The store, provider, plugin shim, CLI inspection/repair tools, Honcho API import, identity maps, and deterministic consolidation MVP are implemented and tested. Do not switch a production Hermes setup without doing a trial import and inspection first.
 
-- No background server.
-- No required cloud service.
-- No hidden dialectic/dream worker as the core behavior.
-- No destructive migration that treats old history as expendable.
+---
 
-## Documentation
+## Why this is different
 
-- [Features](docs/features.md)
-- [Design](docs/design.md)
-- [CLI](docs/cli.md)
-- [Contributing](CONTRIBUTING.md)
-- [Agent instructions](AGENTS.md)
+Most memory systems are either too small — a few strings in a prompt — or too magical: server processes, queues, vector stores, hidden summaries, model-specific workers, and unclear identity rules.
 
-## Current surfaces
+Hermes Local Memory is opinionated in the other direction:
 
-The package now includes a Hermes-compatible `LocalMemoryProvider` with these tools:
+- **Local-first** — default storage is `~/.hermes/memory/local_memory.sqlite`.
+- **No memory server** — no FastAPI, Docker, Redis, Postgres, or daemon required.
+- **Agent-integrated** — Hermes accesses memory through normal tools like `memory_context`, `memory_search`, `memory_conclude`, and `memory_consolidate`.
+- **Inspectable by design** — humans and agents can list peers, aliases, sessions, cards, messages, facts, and rendered context.
+- **Identity is data** — aliases like `telegram:151011988`, `honcho:Simone`, and `user` point to canonical peers such as `simone`.
+- **Raw history is preserved** — imports copy raw messages; identity repair does not rewrite historical rows unless an explicit tool says so.
+- **Consolidation is explicit** — deterministic dry-runs produce plans; future agent-assisted consolidation should produce validated patches.
+- **Migration-safe** — Honcho import is additive/idempotent, supports identity maps, and never mutates Honcho.
+- **Usable by agents** — CLI JSON output, clear docs, tests, and `AGENTS.md` are first-class.
 
-- `memory_profile` — read/write compact peer cards.
-- `memory_search` — search durable facts.
-- `memory_context` — show exactly what would be injected.
-- `memory_conclude` — add durable facts with evidence links to the most recent synced user turn.
-- `memory_consolidate` — preview/apply deterministic consolidation of cards and candidate facts.
+---
 
-The provider is intentionally independently testable and does not import Hermes. A thin Hermes plugin shim can wrap this class from `$HERMES_HOME/plugins/local_memory/` or upstream Hermes later.
+## What it offers today
 
-Planned next surfaces:
+### Hermes provider tools
 
-- richer summarization and optional LLM-assisted extraction/consolidation.
+`LocalMemoryProvider` exposes:
 
-## Development
+| Tool | Purpose |
+| --- | --- |
+| `memory_profile` | Read or replace compact peer cards. |
+| `memory_search` | Search active durable facts through SQLite FTS5. |
+| `memory_context` | Show exactly what local memory would inject into the prompt. |
+| `memory_conclude` | Add durable facts with evidence links to the most recent synced user turn. |
+| `memory_consolidate` | Preview/apply deterministic card/fact consolidation. |
+
+### CLI capabilities
+
+`hermes-local-memory` supports:
+
+- inspect peers, aliases, sessions, cards, messages, facts, search, and rendered context
+- explicit alias repair
+- explicit fact add/retract
+- full-card replacement from JSON
+- Honcho API dry-run/apply import
+- Honcho identity maps for fragmented peers
+- deterministic consolidation dry-run/apply
+- Hermes plugin shim installation
+
+### Data model
+
+The SQLite store includes:
+
+- `profiles`
+- `peers`
+- `peer_aliases`
+- `sessions`
+- `session_peers`
+- `messages` + FTS
+- `facts` + FTS
+- `cards`
+- `summaries`
+
+---
+
+## Quick install for humans
+
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/smarzola/hermes-local-memory.git
@@ -55,47 +86,279 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 pytest
+ruff check .
 ```
 
-## Install the Hermes plugin shim
-
-From a checkout:
+If you do not want to install yet, most examples can be run from the checkout with:
 
 ```bash
-cd hermes-local-memory
-PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
+PYTHONPATH=src python -m hermes_local_memory.cli --help
 ```
 
-If installed as a package, use the console script:
+### 2. Install the Hermes plugin shim
+
+From an installed package:
 
 ```bash
 hermes-local-memory install-shim --hermes-home ~/.hermes
 ```
 
-Then configure Hermes:
+From a checkout:
+
+```bash
+PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
+```
+
+This writes:
+
+```text
+~/.hermes/plugins/local_memory/__init__.py
+```
+
+It does **not** modify `~/.hermes/config.yaml` and does **not** switch your live memory provider.
+
+### 3. Configure Hermes
+
+After validating the shim and trial DB, configure Hermes:
 
 ```yaml
 memory:
   provider: local_memory
 ```
 
-Restart Hermes or start a fresh session after changing memory providers.
+Then restart Hermes or start a fresh session.
+
+> Recommended: keep your existing provider active until you have imported/inspected data in a separate trial DB.
+
+---
+
+## Basic CLI examples
+
+Global `--db` goes before the subcommand:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory.sqlite peers --json
+```
+
+Inspect memory:
+
+```bash
+hermes-local-memory --db memory.sqlite peers --json
+hermes-local-memory --db memory.sqlite aliases --json
+hermes-local-memory --db memory.sqlite cards --peer simone --observer ambrogio --json
+hermes-local-memory --db memory.sqlite facts --peer simone --observer ambrogio --json
+hermes-local-memory --db memory.sqlite context \
+  --peer simone \
+  --observer ambrogio \
+  --query "what should I remember?"
+```
+
+Add explicit memory:
+
+```bash
+hermes-local-memory --db memory.sqlite fact add \
+  "Simone prefers local-first memory systems." \
+  --peer simone \
+  --observer ambrogio \
+  --kind preference \
+  --json
+```
+
+Repair an alias:
+
+```bash
+hermes-local-memory --db memory.sqlite alias add telegram:151011988 \
+  --peer simone \
+  --source telegram \
+  --verified \
+  --json
+```
+
+Preview consolidation:
+
+```bash
+hermes-local-memory --db memory.sqlite consolidate \
+  --peer simone \
+  --observer ambrogio \
+  --promote-candidates \
+  --dry-run \
+  --json
+```
+
+Apply only after review:
+
+```bash
+hermes-local-memory --db memory.sqlite consolidate \
+  --peer simone \
+  --observer ambrogio \
+  --promote-candidates \
+  --apply \
+  --json
+```
+
+---
+
+## Migrating from Honcho
+
+Preferred path: use the Honcho HTTP API, not direct database reads.
+
+Dry-run:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory_trial.sqlite import honcho-api \
+  --base-url http://localhost:8000/v3 \
+  --workspace hermes \
+  --api-key "$HONCHO_API_KEY" \
+  --dry-run \
+  --json
+```
+
+Apply to a **trial DB**:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory_trial.sqlite import honcho-api \
+  --base-url http://localhost:8000/v3 \
+  --workspace hermes \
+  --api-key "$HONCHO_API_KEY" \
+  --apply \
+  --json
+```
+
+Use identity maps to collapse fragmented Honcho identities into canonical local peers:
+
+```json
+{
+  "peers": {
+    "honcho:151011988": "simone",
+    "honcho:Simone": "simone",
+    "honcho:7973745978": "andra",
+    "honcho:Ambrogio": "ambrogio"
+  },
+  "patterns": {
+    "honcho:user-default*": "simone"
+  },
+  "display_names": {
+    "simone": "Simone",
+    "andra": "Andra",
+    "ambrogio": "Ambrogio"
+  },
+  "kinds": {
+    "simone": "human",
+    "andra": "human",
+    "ambrogio": "ai"
+  }
+}
+```
+
+Then pass:
+
+```bash
+--identity-map ~/.hermes/local-memory-identity-map.json
+```
+
+See [CLI docs](docs/cli.md) for full importer behavior.
+
+---
+
+## Agent workflow
+
+Agents should treat Local Memory as an auditable system of record.
+
+Before repairs or migration:
+
+```bash
+hermes-local-memory --db memory.sqlite peers --json
+hermes-local-memory --db memory.sqlite aliases --json
+hermes-local-memory --db memory.sqlite cards --peer <peer> --observer <assistant> --json
+hermes-local-memory --db memory.sqlite facts --peer <peer> --observer <assistant> --json
+hermes-local-memory --db memory.sqlite messages --peer <peer> --json
+hermes-local-memory --db memory.sqlite context --peer <peer> --observer <assistant> --query "current task"
+```
+
+When consolidating:
+
+1. generate a dry-run plan
+2. review the proposed card/fact changes
+3. apply only after approval or policy allows it
+4. inspect rendered context after apply
+5. never mutate raw messages as part of consolidation
+
+Future agent-assisted consolidation should follow this pattern:
+
+```text
+SQLite packet -> Hermes Agent reasoning -> structured patch -> validation/diff -> explicit apply
+```
+
+The memory package should not own model calls. Hermes should.
+
+---
+
+## Scheduled maintenance with Hermes cron
+
+It makes sense to run memory maintenance regularly, but scheduled jobs should be conservative.
+
+Recommended default schedule:
+
+- generate a consolidation dry-run report weekly
+- deliver it to the current chat or save locally
+- do **not** auto-apply broad promotions from imported candidate facts
+- only auto-apply narrow, validated patches later, after the patch validator exists
+
+Example Hermes cron prompt:
+
+```text
+Run a local-memory maintenance dry-run. Use the repository at /home/smarzola/hermes-local-memory.
+Do not mutate the live Hermes provider config. Do not apply consolidation.
+Run:
+PYTHONPATH=src python -m hermes_local_memory.cli --db ~/.hermes/memory/local_memory_trial_mapped.sqlite consolidate --peer simone --observer ambrogio --promote-candidates --dry-run --json
+Summarize counts, warnings, top proposed card additions, and whether the result looks safe or noisy. Deliver the summary back to this chat.
+```
+
+In Hermes, create that as a scheduled job with the cron/automation tool rather than embedding a scheduler in this package. This keeps Local Memory local and simple while letting Hermes orchestrate periodic review.
+
+---
+
+## Documentation
+
+- [CLI reference](docs/cli.md)
+- [Features](docs/features.md)
+- [Design](docs/design.md)
+- [Contributing](CONTRIBUTING.md)
+- [Agent instructions](AGENTS.md)
+
+---
 
 ## Repository layout
 
 ```text
 src/hermes_local_memory/
-  __init__.py       Public package exports
-  cli.py            Developer/install CLI
-  hermes_plugin.py  Hermes user-plugin shim renderer
-  provider.py       Hermes-compatible provider lifecycle and tools
-  store.py          SQLite store and deterministic retrieval core
-  schema.py         Schema migrations
+  cli.py             CLI for inspection, repair, import, consolidation, shim install
+  consolidation.py   Deterministic consolidation planner/apply logic
+  hermes_plugin.py   Hermes user-plugin shim renderer
+  honcho_api.py      stdlib Honcho HTTP API exporter
+  honcho_import.py   Honcho import planner/apply logic + identity maps
+  provider.py        Hermes-compatible provider lifecycle and tools
+  schema.py          SQLite schema bootstrap
+  store.py           SQLite store and deterministic retrieval core
 
 tests/
-  test_provider.py  Provider lifecycle/tool behavior tests
-  test_store.py     Store behavior tests
+  test_*.py          Store, provider, CLI, import, plugin, consolidation tests
 ```
+
+---
+
+## Development
+
+```bash
+cd hermes-local-memory
+PYTHONPATH=src pytest -q
+ruff check .
+PYTHONPATH=src python -m compileall -q src tests
+```
+
+CI runs on Python 3.10, 3.11, and 3.12.
+
+---
 
 ## License
 
