@@ -13,6 +13,7 @@ Before publishing a release, update:
 
 - `pyproject.toml` → `[project].version`
 - README status text if maturity changed
+- `CHANGELOG.md` with user-facing changes
 - release notes / GitHub tag body
 
 ## Pre-release checks
@@ -113,6 +114,7 @@ Release notes should include:
 - migration paths supported
 - safety notes: trial DB, dry-run first, raw history preserved
 - known limitations / pre-alpha caveats
+- maintenance safety notes when behavior changes candidate promotion, card synthesis, or scheduled jobs
 
 ## PyPI publish
 

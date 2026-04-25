@@ -200,7 +200,7 @@ Compact peer cards for fast injection.
 cards(subject_peer_id, observer_peer_id, scope, scope_id, content_json, updated_at)
 ```
 
-Cards are stored for speed and clarity, but should be rebuildable from facts and summaries.
+Cards are stored for speed and clarity, but should be rebuildable from facts and summaries. They are compact synthesized views, not append-only mirrors of the fact table.
 
 ### `summaries`
 
@@ -223,9 +223,10 @@ Reflection / distillation
   scheduled for stale sessions
   -> raw message windows become candidate facts + session summaries
 
-Consolidation / maintenance
+Conservative consolidation / maintenance
   scheduled after reflection
-  -> candidate facts are promoted/superseded/retracted and cards are compacted
+  -> safe candidate facts are promoted/superseded/retracted
+  -> card synthesis/cleanup uses explicit card-review or card_replace patches
 
 Context injection
   every non-trivial prompt
@@ -234,7 +235,7 @@ Context injection
 
 Reflection is the explicit replacement for opaque "dreaming". It does not run hidden model calls in the storage layer. Instead, Local Memory builds source-labeled packets, Hermes Agent reasons over them, and Local Memory validates structured patches before writing candidates and summaries.
 
-Consolidation is downstream from reflection. It assumes candidate facts already exist and focuses on lifecycle and card quality.
+Consolidation is downstream from reflection. It assumes candidate facts already exist and focuses on conservative fact lifecycle changes. Card quality is handled explicitly through `memory_profile`, `card-review-packet`, or validated consolidation patches with full `card_replace`; ordinary maintenance should not append every active fact into cards.
 
 ## Current provider tools
 

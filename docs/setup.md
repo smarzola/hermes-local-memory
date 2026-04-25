@@ -226,8 +226,9 @@ If a human asks an agent to set up Local Memory, the agent should:
 6. apply only after reviewing counts/warnings;
 7. render `memory_context` / `context` and compare quality;
 8. run peer/candidate/card review packets for imported data;
-9. schedule report-only maintenance before any autonomous apply;
-10. switch `memory.provider` only after explicit human approval.
+9. schedule maintenance as dry-run/report-first; allow autonomous apply only for bounded, conservative fact-lifecycle changes;
+10. use card review or validated `card_replace` patches for compact card synthesis/cleanup;
+11. switch `memory.provider` only after explicit human approval.
 
 Agents should clone the GitHub repo and run `PYTHONPATH=src ...` commands only when they are developing the package or testing unreleased changes.
 

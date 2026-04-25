@@ -8,7 +8,7 @@ The core idea is simple:
 
 > Memory should be a first-class part of the Hermes Agent runtime: a local, auditable substrate that the agent can inspect, reason over, maintain, and update through explicit tools — not an opaque appendix bolted onto the side of the agent.
 
-This project is inspired by the good ideas in Honcho, especially peers/cards/consolidation, but deliberately chooses boring engineering: one local SQLite DB, explicit identity mapping, deterministic retrieval, source-labeled context, dry-runs before writes, and agent-generated patches instead of hidden backend mutation.
+This project is inspired by the good ideas in Honcho, especially peers/cards/consolidation, but deliberately chooses boring engineering: one local SQLite DB, explicit identity mapping, deterministic retrieval, source-labeled context, conservative maintenance dry-runs before writes, and agent-generated patches instead of hidden backend mutation.
 
 > Status: **alpha**. The store, provider, plugin shim, CLI inspection/repair tools, Hermes markdown import, Honcho API import, identity maps, peer/candidate/card review, reflection, and deterministic consolidation are implemented and tested. Do not switch a production Hermes setup without doing a trial import and inspection first.
 
@@ -28,7 +28,7 @@ Hermes Local Memory is opinionated in the other direction:
 - **Identity is data** — aliases like `telegram:1001`, `honcho:Alice`, and `user` point to canonical peers such as `alice`.
 - **Peers are agent-maintained** — scheduled peer review lets the agent map new platform identities to canonical peers or escalate ambiguous identities for human help.
 - **Raw history is preserved** — imports copy raw messages; identity repair does not rewrite historical rows unless an explicit tool says so.
-- **Consolidation is explicit** — deterministic dry-runs produce plans; future agent-assisted consolidation should produce validated patches.
+- **Consolidation is explicit and conservative** — deterministic dry-runs produce bounded plans; imported candidates are not bulk-promoted; compact cards are curated/replaced rather than grown by blindly appending every active fact.
 - **Migration-safe** — Honcho import is additive/idempotent, supports identity maps, and never mutates Honcho.
 - **Usable by agents** — CLI JSON output, clear docs, tests, and `AGENTS.md` are first-class.
 
@@ -46,8 +46,8 @@ Hermes Local Memory is opinionated in the other direction:
 | `memory_search` | Search active durable facts through SQLite FTS5. |
 | `memory_context` | Show exactly what local memory would inject into the prompt. |
 | `memory_conclude` | Add durable facts with evidence links to the most recent synced user turn. |
-| `memory_consolidate` | Preview/apply deterministic card/fact consolidation for one peer. |
-| `memory_maintenance` | Preview/apply deterministic consolidation across all subject/observer pairs. |
+| `memory_consolidate` | Preview/apply deterministic fact lifecycle maintenance for one peer. It can promote safe candidates and supersede duplicates; it does not append every active fact into the card. |
+| `memory_maintenance` | Preview/apply deterministic fact lifecycle maintenance across all subject/observer pairs; provider results are compact summaries suitable for scheduled jobs. |
 | `memory_peer_review` | Build peer review packets so the agent can maintain aliases and escalate ambiguous identities. |
 | `memory_reflection_maintenance` | Build reflection packets for stale sessions before consolidation. |
 
@@ -68,9 +68,9 @@ Hermes Local Memory is opinionated in the other direction:
 - validated candidate review patch dry-run/apply
 - peer review packets for agent-controlled identity maintenance
 - validated peer review patch dry-run/apply
-- deterministic consolidation dry-run/apply
+- conservative deterministic consolidation dry-run/apply
 - consolidation packets for Hermes Agent review
-- all-pairs maintenance dry-run/apply
+- conservative all-pairs maintenance dry-run/apply
 - validated consolidation patch dry-run/apply
 - Hermes plugin shim installation
 
@@ -249,7 +249,7 @@ hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --dry-r
 hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --apply --json
 ```
 
-Run deterministic maintenance across all subject/observer pairs:
+Run conservative deterministic maintenance across all subject/observer pairs:
 
 ```bash
 hermes-local-memory --db memory.sqlite maintenance \
@@ -358,7 +358,7 @@ Then pass:
 --identity-map ~/.hermes/local-memory-identity-map.json
 ```
 
-After import, treat candidate facts and imported cards as separate review steps:
+After import, treat candidate facts and imported cards as separate review steps. Honcho-derived conclusions are intentionally imported as candidates and deterministic maintenance will not bulk-promote them; review high-signal memories explicitly:
 
 1. use `candidate-review-packet` / `apply-candidate-review-patch` to promote only high-signal imported candidate facts;
 2. use `card-review-packet` / `apply-card-review-patch` to clean imported cards so compact prompt context does not inherit stale, duplicate, or task-local lines.
@@ -422,8 +422,9 @@ Scheduled reflection / distillation
   -> candidate facts and session summaries are written with evidence
 
 Scheduled consolidation / maintenance
-  -> candidate facts + active facts + cards are reviewed across all subject/observer pairs
-  -> Hermes Agent decides what to promote, supersede, retract, or compact into cards
+  -> candidates, active facts, cards, aliases, and summaries are reviewed across all subject/observer pairs
+  -> deterministic maintenance handles only safe fact lifecycle changes
+  -> Hermes Agent uses review packets/patches for card synthesis or ambiguous candidate promotion
   -> Local Memory validates and applies structured changes
 
 Next prompt injection
@@ -433,7 +434,7 @@ Next prompt injection
 The important split is:
 
 - **Local Memory** stores, retrieves, validates, and applies auditable changes.
-- **Hermes Agent** owns memory decisions: peer mapping, candidate promotion, card cleanup, reflection review, and consolidation choices.
+- **Hermes Agent** owns memory decisions: peer mapping, reflection review, candidate promotion, card synthesis/cleanup, and ambiguous consolidation choices.
 - **Humans** are asked only when the agent cannot safely infer a peer or when policy requires approval.
 - **Hermes cron/scheduler** runs recurring peer review, reflection, and consolidation.
 
@@ -448,16 +449,24 @@ The profile/card is **not** the only thing injected. Context Builder v2 composes
 
 Candidate facts and raw message windows are usually **not** injected into ordinary conversations. They are primarily used during maintenance/review jobs unless explicitly requested.
 
+### Reflection, consolidation, and cards
+
+Reflection is the distillation step: stale raw-message windows become evidence-backed candidate facts and session summaries. Consolidation/maintenance is the fact-lifecycle step: duplicate candidates can be superseded and high-confidence local candidates can be promoted. **Cards are compact synthesized views**, not append-only mirrors of the fact table.
+
+That means ordinary maintenance deliberately does **not** append every active fact into a card. If a card needs cleanup or synthesis, use `card-review-packet` / `apply-card-review-patch` or a validated consolidation patch with `card_replace`. This keeps prompt context small, auditable, and human/agent-readable.
+
+Imported Honcho conclusions are especially noisy, so they remain candidates until explicitly reviewed. Large candidate-promotion counts in maintenance dry-runs should be treated as a tooling or policy regression, not something to blindly apply.
+
 Why maintenance is needed:
 
 - ordinary conversations create useful memories that are not explicitly saved during the turn
 - conversations also create duplicate or overlapping memories
 - imported systems can contain stale identities or noisy derived facts
 - candidate facts need promotion, superseding, or retraction
-- compact cards should stay useful instead of growing into transcripts
+- compact cards should stay useful instead of growing into transcripts; ordinary maintenance must not append every active fact into cards
 - raw history should remain intact while derived layers improve over time
 
-This is why the project supports both reflection/distillation and deterministic all-pairs consolidation, orchestrated by Hermes scheduled jobs rather than hidden backend workers.
+This is why the project supports both reflection/distillation and deterministic all-pairs maintenance, orchestrated by Hermes scheduled jobs rather than hidden backend workers. Reflection creates evidence-backed candidate facts and session summaries; card synthesis remains an explicit review/patch step so cards stay compact.
 
 ---
 
@@ -588,9 +597,10 @@ Recommended autonomous cadence:
 - run nightly for most users, or every 6 hours for high-volume agents
 - first run **peer review** so new platform identities can be mapped before downstream reflection/consolidation
 - then run **reflection/distillation** over stale sessions so ordinary conversation can become candidate facts and summaries
-- then run **all-pairs consolidation** across every subject/observer pair with cards or facts
+- then run **all-pairs maintenance** across every subject/observer pair with cards or facts
 - inspect each pair's current card, active facts, candidate facts, aliases, summaries, and rendered context
-- apply narrow, validated changes when the plan is clearly safe
+- apply narrow, validated fact-lifecycle changes only when the plan is clearly safe
+- use card-review or consolidation patches with full `card_replace` when a compact card needs synthesis/cleanup
 - deliver a concise report of reflected sessions, changed pairs, skipped pairs, and escalations
 - escalate individual sessions/pairs when plans are large, noisy, ambiguous, identity-confused, or would rewrite cards heavily
 
@@ -599,7 +609,8 @@ Peer review should generally run before reflection and consolidation:
 ```text
 new platform identities -> peer review packets -> alias moves or human prompts
 raw messages -> reflection packets -> candidate facts + session summaries
-candidate facts + active facts + cards -> consolidation -> compact cards
+candidate facts + active facts + cards -> maintenance -> safe fact lifecycle changes
+card-review / consolidation patches -> compact card synthesis when needed
 compact cards + durable facts + summaries + retrieval -> prompt injection
 ```
 
@@ -628,10 +639,12 @@ Phase 2: Reflection / distillation
 - Validate each reflection patch with apply-reflection-patch --dry-run before applying.
 - Skip sessions that are noisy, identity-confused, too large, or ambiguous.
 
-Phase 3: Consolidation / all-pairs maintenance
+Phase 3: Conservative all-pairs maintenance
 - Run all-pairs maintenance with --dry-run.
-- Inspect all subject/observer pairs with cards or facts.
-- Apply only narrow, coherent, non-duplicative changes clearly supported by facts/cards/summaries and compatible with that pair's identity.
+- Inspect the compact summary of changed pairs.
+- Apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions.
+- Do not treat active facts as automatic card additions; cards are compact synthesized views.
+- If a card needs cleanup, build a card-review packet or consolidation packet and apply a validated full-card replacement.
 - Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
 
 Report exactly: peer aliases moved, human identity prompts, reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
@@ -640,7 +653,7 @@ Report exactly: peer aliases moved, human identity prompts, reflected sessions, 
 A more prudent/report-only variant is also useful for new deployments or risky imports:
 
 ```text
-Run the same peer review + reflection + all-pairs consolidation job, but do not apply changes. Produce only a dry-run report with unresolved peer counts, proposed alias moves, human identity questions, stale session counts, proposed candidate facts/summaries, pair counts, top card additions, top promotions/supersedes, skipped items, and recommendations.
+Run the same peer review + reflection + all-pairs maintenance job, but do not apply changes. Produce only a dry-run report with unresolved peer counts, proposed alias moves, human identity questions, stale session counts, proposed candidate facts/summaries, pair counts, candidate promotions/supersedes, card-review needs, skipped items, and recommendations.
 ```
 
 This gives both modes:

@@ -34,14 +34,15 @@ turn sync
 reflection / distillation
   stale raw-message windows -> Hermes Agent review -> candidate facts + session summaries
 
-consolidation / maintenance
-  candidate facts + active facts + cards -> promotions/supersedes/retractions/card updates
+conservative consolidation / maintenance
+  candidate facts + active facts + cards -> safe fact lifecycle changes
+  card synthesis/cleanup happens through card review or validated card_replace patches
 
 prompt injection
   identity + compact card + durable facts + session summaries/retrieval
 ```
 
-Reflection should run before consolidation in scheduled maintenance. Candidate facts should generally not be injected into ordinary prompts unless the task is memory review.
+Reflection should run before consolidation in scheduled maintenance. Candidate facts should generally not be injected into ordinary prompts unless the task is memory review. Do not bulk-promote imported Honcho candidates, and do not append all active facts into cards; cards are compact synthesized views.
 
 ## Current package layout
 
@@ -113,8 +114,9 @@ Do not add a scheduler to this package. Instruct Hermes Agent to create a recurr
 3. has Hermes review reflection packets and produce reflection patches,
 4. validates/applies safe reflection patches,
 5. runs all-pairs `maintenance --dry-run`,
-6. applies only narrow, validated consolidation changes,
-7. reports peer prompts, reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations.
+6. applies only bounded fact-lifecycle changes such as duplicate supersedes or high-confidence local/reflection candidate promotions,
+7. uses card review or validated `card_replace` patches for compact card synthesis/cleanup,
+8. reports peer prompts, reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations.
 
 Recommended starting cadence: nightly. High-volume deployments can move to every 6 hours once dry-run reports are clean.
 
@@ -123,5 +125,5 @@ Recommended starting cadence: nightly. High-volume deployments can move to every
 1. Package/release hardening and smoke installs from built artifacts.
 2. Higher-level Hermes cron templates or setup helpers.
 3. Live Hermes runtime validation of the generated `local_memory` plugin shim.
-4. Safer candidate ranking/filtering for noisy imports.
+4. Higher-level autonomous maintenance helpers that produce patches with less prompt scaffolding.
 5. Optional embeddings.

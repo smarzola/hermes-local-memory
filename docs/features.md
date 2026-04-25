@@ -63,7 +63,7 @@ Sessions represent conversation lanes. A Telegram DM, CLI conversation, or group
 
 ### Peer cards
 
-`memory_profile` reads or replaces a compact peer card. Cards are optimized for cheap context injection and quick inspection.
+`memory_profile` reads or replaces a compact peer card. Cards are optimized for cheap context injection and quick inspection. They are **compact synthesized views**, not append-only mirrors of the fact table. Ordinary maintenance must not blindly append every active fact into a card; card cleanup/synthesis should happen through `card-review-packet` / `apply-card-review-patch` or a validated consolidation patch with a full `card_replace`.
 
 ### Deterministic search
 
@@ -259,16 +259,18 @@ Peer review gives Hermes Agent control of peer identity maintenance. It currentl
 
 Peer review does not rewrite raw messages or delete peer rows. It changes the alias layer so future context, facts, and cards resolve to the right canonical person.
 
-### Consolidation
+### Consolidation / maintenance
 
-Consolidation is explicit, deterministic, and inspectable. It currently:
+Consolidation is explicit, deterministic, and inspectable. It is conservative by design. It currently:
 
 1. reads the current peer card, active facts, and candidate facts for a subject/observer pair
 2. supersedes candidate facts that duplicate an existing card line or active fact
-3. optionally promotes unique candidate facts
-4. proposes card additions from active facts and promoted candidates
+3. optionally promotes only safe candidates: high-confidence local/reflection candidates are eligible, while imported Honcho candidates remain candidates until explicit review
+4. proposes card additions only for newly promoted safe candidates, not for every existing active fact
 5. can run for one pair or all subject/observer pairs with cards/facts
 6. applies only with `--apply` or `memory_consolidate({"apply": true})`
+
+Cards remain compact synthesized views. If active facts should be folded into a better profile card, use card review or a validated consolidation patch with `card_replace`; do not rely on maintenance to grow the card.
 
 CLI examples:
 
@@ -303,7 +305,7 @@ Provider tool:
 }
 ```
 
-The MVP does not call an LLM, delete raw history, or silently mutate memory during normal context injection. Hermes Agent owns the reasoning step for reflection and consolidation; Local Memory owns packet building, validation, storage, and auditable apply.
+The MVP does not call an LLM, delete raw history, or silently mutate memory during normal context injection. Hermes Agent owns the reasoning step for reflection, candidate review, card synthesis, and ambiguous consolidation; Local Memory owns packet building, validation, storage, conservative deterministic maintenance, and auditable apply.
 
 ### Fact replacement/retraction
 
@@ -322,7 +324,7 @@ Provider tool support is still add-only; replace/supersede semantics remain plan
 
 ### Summaries
 
-Session/profile/topic summaries should reduce the need to search raw messages for every turn.
+Session summaries are written by validated reflection patches and act as reflection checkpoints. Profile/card synthesis is intentionally separate: summaries and facts provide evidence, while cards are compact views maintained through profile/card tools or validated patches.
 
 ### Optional embeddings
 

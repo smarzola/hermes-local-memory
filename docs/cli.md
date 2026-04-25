@@ -489,11 +489,13 @@ Current deterministic behavior:
 
 - reads current card, active facts, and candidate facts
 - supersedes candidate facts that duplicate existing card lines or active facts
-- optionally promotes unique candidate facts when `--promote-candidates` is passed
-- proposes card additions from active facts and promoted candidates
+- optionally promotes safe candidates when `--promote-candidates` is passed
+- treats imported Honcho candidates as review-only; they are not bulk-promoted by maintenance
+- proposes card additions only for newly promoted safe candidates
+- does **not** append every existing active fact into the card
 - never deletes raw messages or facts
 
-For imported Honcho data, expect many noisy candidate facts. Prefer agent review, scoped apply decisions, and after-action summaries over blind broad promotion.
+For imported Honcho data, expect many noisy candidate facts. Prefer candidate review, scoped apply decisions, and after-action summaries over blind broad promotion. If cards need cleanup, use `card-review-packet` or a consolidation patch with `card_replace`; cards are compact synthesized views, not fact-table dumps.
 
 ### Build a consolidation packet for Hermes Agent
 
@@ -555,7 +557,7 @@ hermes-local-memory --db memory.sqlite maintenance \
   --json
 ```
 
-Hermes cron jobs can use this all-pairs result as the first pass, then reason per pair about what should be applied, skipped, or escalated.
+Hermes cron jobs can use this all-pairs result as the first pass, then reason per pair about what should be applied, skipped, or escalated. The provider tool returns a compact summary for scheduled jobs; the CLI can emit full JSON for deeper inspection.
 
 ### Plan a Honcho SQLite fixture import
 
@@ -638,10 +640,11 @@ Recommended primary pattern: autonomous but auditable. Reflection runs first; co
 3. have Hermes Agent review each packet and produce reflection patches with candidate facts and session summaries
 4. validate every reflection patch with `apply-reflection-patch --dry-run`; apply only narrow, evidence-backed patches
 5. run all-pairs `maintenance --dry-run` after reflection so new candidates can be considered
-6. inspect every subject/observer pair's card, active facts, candidate facts, aliases, summaries, and rendered context
-7. apply narrow, validated consolidation changes for pairs whose plans are clearly safe
-8. skip/report sessions or pairs whose plans are large, noisy, ambiguous, identity-confused, or mostly imported meta-facts
-9. produce an after-action summary listing reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations
+6. inspect the compact changed-pair summary and, when needed, the full pair packet
+7. apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions
+8. use card review or a validated `card_replace` patch when a card needs synthesis/cleanup
+9. skip/report sessions or pairs whose plans are large, noisy, ambiguous, identity-confused, or mostly imported meta-facts
+10. produce an after-action summary listing reflected sessions, candidate facts, summaries, changed pairs, skipped pairs, and escalations
 
 Example autonomous scheduled job prompt:
 
@@ -661,10 +664,12 @@ Phase 1: Reflection / distillation
 - Validate each reflection patch with apply-reflection-patch --dry-run before applying.
 - Skip sessions that are noisy, identity-confused, too large, or ambiguous.
 
-Phase 2: Consolidation / all-pairs maintenance
+Phase 2: Conservative all-pairs maintenance
 - Run all-pairs maintenance with --dry-run.
-- Inspect all subject/observer pairs with cards or facts.
-- Apply only narrow, coherent, non-duplicative changes clearly supported by facts/cards/summaries and compatible with that pair's identity.
+- Inspect the compact changed-pair summary.
+- Apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions.
+- Do not append every active fact into cards; cards are compact synthesized views.
+- Use card-review or a validated `card_replace` patch when a card needs synthesis/cleanup.
 - Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
 
 Report exactly: reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
@@ -673,7 +678,7 @@ Report exactly: reflected sessions, candidate facts added, summaries added, pair
 Prudent/report-only variant for new deployments, risky imports, or cautious operators:
 
 ```text
-Run the same Hermes Local Memory reflection + all-pairs consolidation job, but do not apply changes. Produce only a dry-run report with stale session counts, proposed candidate facts/summaries, pair counts, top card additions, top promotions/supersedes, skipped items, and recommendations.
+Run the same Hermes Local Memory reflection + all-pairs maintenance job, but do not apply changes. Produce only a dry-run report with stale session counts, proposed candidate facts/summaries, pair counts, candidate promotions/supersedes, card-review needs, skipped items, and recommendations.
 ```
 
 Suggested cadence: start nightly. High-volume agents can move to every 6 hours once dry-run reports look clean.
