@@ -16,6 +16,10 @@ from hermes_local_memory.consolidation import (
     build_consolidation_plan,
     build_maintenance_plan,
 )
+from hermes_local_memory.hermes_markdown_import import (
+    apply_hermes_markdown_import_plan,
+    plan_hermes_markdown_import,
+)
 from hermes_local_memory.hermes_plugin import write_plugin_shim
 from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
 from hermes_local_memory.honcho_import import (
@@ -288,6 +292,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     honcho_api.add_argument("--json", action="store_true", help="Print JSON")
 
+    hermes_markdown = import_sub.add_parser(
+        "hermes-markdown",
+        help="Plan or apply import from Hermes built-in MEMORY.md / USER.md files",
+    )
+    hermes_markdown.add_argument(
+        "--source-dir",
+        default=str(Path.home() / ".hermes" / "memories"),
+        help="Directory containing USER.md and MEMORY.md, default: ~/.hermes/memories",
+    )
+    hermes_markdown.add_argument("--user-peer", default="user")
+    hermes_markdown.add_argument("--assistant-peer", default="assistant")
+    hermes_markdown.add_argument("--user-display-name")
+    hermes_markdown.add_argument("--assistant-display-name")
+    hermes_markdown.add_argument("--session-id", default="hermes-markdown-import")
+    md_mode = hermes_markdown.add_mutually_exclusive_group()
+    md_mode.add_argument("--dry-run", action="store_true", help="Plan only; do not write anything")
+    md_mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply the import plan to the local DB",
+    )
+    hermes_markdown.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Do not back up an existing target DB before --apply",
+    )
+    hermes_markdown.add_argument("--json", action="store_true", help="Print JSON")
+
     honcho = import_sub.add_parser(
         "honcho",
         help="Plan a safe Honcho import from a SQLite DB fixture/export",
@@ -341,6 +373,26 @@ def main(argv: list[str] | None = None) -> int:
             identity_map=identity_map,
         )
         result = apply_honcho_import_plan(plan, backup=not args.no_backup) if args.apply else plan
+        _print_plan(result, as_json=args.json)
+        return 0
+
+    if args.command == "import" and args.import_command == "hermes-markdown":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        plan = plan_hermes_markdown_import(
+            Path(args.source_dir).expanduser(),
+            target_db=Path(args.db).expanduser(),
+            user_peer_id=args.user_peer,
+            assistant_peer_id=args.assistant_peer,
+            user_display_name=args.user_display_name,
+            assistant_display_name=args.assistant_display_name,
+            session_id=args.session_id,
+        )
+        result = (
+            apply_hermes_markdown_import_plan(plan, backup=not args.no_backup)
+            if args.apply
+            else plan
+        )
         _print_plan(result, as_json=args.json)
         return 0
 

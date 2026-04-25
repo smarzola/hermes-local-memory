@@ -16,6 +16,7 @@ The inspection and planning commands in this document are read-only:
 - `context`
 - `import honcho-api --dry-run`
 - `import honcho --dry-run`
+- `import hermes-markdown --dry-run`
 - `candidate-review-packet`
 - `card-review-packet`
 - `peer-review-packet`
@@ -28,6 +29,7 @@ Current write commands are explicit repair/mutation commands:
 - `alias add` / `alias move`
 - `fact add` / `fact retract`
 - `card replace`
+- `import hermes-markdown --apply`
 - `consolidate --apply`
 - `apply-patch --apply`
 - `apply-candidate-review-patch --apply`
@@ -154,6 +156,50 @@ hermes-local-memory --db memory.sqlite context \
 ```
 
 This renders the same source-labeled context shape used by provider `prefetch()`.
+
+### Plan or apply a Hermes built-in markdown import
+
+This is the easiest migration path for users who used only Hermes' always-on built-in memory files:
+
+```text
+$HERMES_HOME/memories/USER.md
+$HERMES_HOME/memories/MEMORY.md
+```
+
+Dry-run first:
+
+```bash
+hermes-local-memory --db memory.sqlite import hermes-markdown \
+  --source-dir ~/.hermes/memories \
+  --user-peer alice \
+  --assistant-peer bob \
+  --dry-run \
+  --json
+```
+
+Apply after reviewing the plan:
+
+```bash
+hermes-local-memory --db memory.sqlite import hermes-markdown \
+  --source-dir ~/.hermes/memories \
+  --user-peer alice \
+  --assistant-peer bob \
+  --apply \
+  --json
+```
+
+Behavior:
+
+- splits entries using Hermes' standard `§` delimiter
+- imports `USER.md` entries as active user facts observed by the assistant peer
+- uses `USER.md` entries as the user's compact card
+- imports `MEMORY.md` entries as active assistant/self facts observed by the assistant peer
+- uses `MEMORY.md` entries as the assistant's self-card
+- creates a migration session for auditability
+- skips already-imported facts by stable content-derived IDs on repeated apply
+- backs up an existing target DB unless `--no-backup` is passed
+
+Because built-in markdown memory is already curated by the existing Hermes memory tool, imported facts are `active` by default rather than `candidate`.
 
 ### Plan or apply a Honcho API import
 

@@ -59,6 +59,7 @@ Hermes Local Memory is opinionated in the other direction:
 - explicit alias repair
 - explicit fact add/retract
 - full-card replacement from JSON
+- Hermes built-in markdown memory dry-run/apply import from `USER.md` / `MEMORY.md`
 - Honcho API dry-run/apply import
 - Honcho identity maps for fragmented peers
 - reflection packets for stale raw-message windows
@@ -230,6 +231,46 @@ hermes-local-memory --db memory.sqlite maintenance \
   --dry-run \
   --json
 ```
+
+---
+
+## Migrating from Hermes built-in markdown memory
+
+For users who only used Hermes' standard built-in markdown memory, migration is simpler than Honcho: import the local `USER.md` and `MEMORY.md` files from `~/.hermes/memories`.
+
+Dry-run into a trial DB first:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory_trial.sqlite import hermes-markdown \
+  --source-dir ~/.hermes/memories \
+  --user-peer alice \
+  --assistant-peer bob \
+  --dry-run \
+  --json
+```
+
+Apply only after reviewing the plan:
+
+```bash
+hermes-local-memory --db ~/.hermes/memory/local_memory_trial.sqlite import hermes-markdown \
+  --source-dir ~/.hermes/memories \
+  --user-peer alice \
+  --assistant-peer bob \
+  --apply \
+  --json
+```
+
+Import behavior:
+
+- `USER.md` entries become active user facts for `alice` observed by `bob`.
+- `USER.md` entries also become Alice's compact card for Bob.
+- `MEMORY.md` entries become active agent/self facts for `bob` observed by `bob`.
+- `MEMORY.md` entries also become Bob's self-card.
+- entries are split using Hermes' standard `§` delimiter.
+- the import is additive and idempotent; existing facts are skipped on repeated apply.
+- an existing target DB is backed up automatically unless `--no-backup` is passed.
+
+Because markdown memory is already curated, imported facts are active by default. You can still run card review or consolidation afterward if you want a cleaner compact card before switching providers.
 
 ---
 

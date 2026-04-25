@@ -138,6 +138,21 @@ PY
 
 This does not change `memory.provider` and therefore does not replace the active memory backend.
 
+### Hermes built-in markdown importer
+
+Users who stayed on Hermes' standard built-in memory can import `USER.md` and `MEMORY.md` directly:
+
+```bash
+hermes-local-memory --db memory.sqlite import hermes-markdown \
+  --source-dir ~/.hermes/memories \
+  --user-peer alice \
+  --assistant-peer bob \
+  --dry-run \
+  --json
+```
+
+The importer splits entries by Hermes' `§` delimiter. `USER.md` entries become active user facts and the user compact card; `MEMORY.md` entries become active assistant/self facts and the assistant self-card. Apply mode is additive and idempotent, with automatic target DB backup unless `--no-backup` is passed.
+
 ### Honcho importer
 
 The preferred importer path uses Honcho's HTTP API so it can work with local, remote, or hosted Honcho instances:
