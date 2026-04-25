@@ -4,7 +4,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 
@@ -208,7 +208,7 @@ def export_honcho_api(
             "kind": "honcho-api",
             "base_url": client.base_url,
             "workspace": workspace,
-            "exported_at": datetime.now(UTC).isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
         },
         "peers": peers,
         "sessions": sessions,
