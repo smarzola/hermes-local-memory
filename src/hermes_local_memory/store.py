@@ -236,6 +236,56 @@ class LocalMemoryStore:
         data["evidence_message_ids"] = json.loads(data.pop("evidence_json") or "[]")
         return data
 
+    def list_peers(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "select * from peers order by display_name collate nocase, id"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def list_aliases(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute("select * from peer_aliases order by alias").fetchall()
+            return [dict(row) for row in rows]
+
+    def list_sessions(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute("select * from sessions order by updated_at desc, id").fetchall()
+            return [dict(row) for row in rows]
+
+    def list_facts(
+        self,
+        *,
+        peer_id: str | None = None,
+        observer_peer_id: str | None = None,
+        status: str | None = "active",
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        clauses = []
+        params: list[Any] = []
+        if peer_id:
+            clauses.append("subject_peer_id = ?")
+            params.append(peer_id)
+        if observer_peer_id:
+            clauses.append("observer_peer_id = ?")
+            params.append(observer_peer_id)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        where = f"where {' and '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                select * from facts
+                {where}
+                order by updated_at desc, created_at desc, id
+                limit ?
+                """,
+                params,
+            ).fetchall()
+            return [self._hydrate_fact(row) for row in rows]
+
     def search(
         self,
         query: str,

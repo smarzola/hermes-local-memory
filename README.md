@@ -26,6 +26,7 @@ This project is an open-source, boring-engineering replacement for server-shaped
 
 - [Features](docs/features.md)
 - [Design](docs/design.md)
+- [CLI](docs/cli.md)
 - [Contributing](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)
 

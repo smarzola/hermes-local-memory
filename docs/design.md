@@ -335,12 +335,14 @@ Still to verify manually in a live Hermes runtime after installation.
 
 ### Milestone 3: Inspection CLI
 
-Planned:
+Done for read-only inspection:
 
-- print profiles/peers/aliases
+- print peers/aliases/sessions/facts
 - show injected context
-- search facts/messages
-- inspect evidence chains
+- search facts
+- inspect evidence IDs in JSON output
+
+Future repair commands should remain explicit and auditable.
 
 ### Milestone 4: Honcho importer
 
