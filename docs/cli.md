@@ -262,9 +262,56 @@ hermes-local-memory --db memory.sqlite apply-reflection-patch /tmp/reflection-pa
 
 Reflection patches are validated against the message window. New memories from reflection are written as `candidate` facts with evidence IDs; summaries are stored as session summaries. Raw messages are never rewritten.
 
+### Review candidate facts safely
+
+Candidate review is the safer path for noisy imports. Instead of broadly running `maintenance --promote-candidates --apply`, build a packet for one subject/observer pair, optionally filter by source, let Hermes Agent choose narrow actions, and validate/apply the patch.
+
+Build a packet:
+
+```bash
+hermes-local-memory --db memory.sqlite candidate-review-packet \
+  --peer alice \
+  --observer bob \
+  --source honcho-import \
+  --limit 100 \
+  --json > /tmp/alice-candidates.json
+```
+
+Hermes Agent can produce a patch like:
+
+```json
+{
+  "schema": "hermes-local-memory.candidate-review-patch.v1",
+  "subject_peer_id": "alice",
+  "observer_peer_id": "bob",
+  "promote_fact_ids": ["fact_high_signal_preference"],
+  "supersede_fact_ids": [{"id": "fact_duplicate", "reason": "already covered by card"}],
+  "retract_fact_ids": ["fact_noisy_or_wrong"],
+  "card_additions": ["PREFERENCE: Prefers local-first, auditable memory systems"]
+}
+```
+
+Validate without writing:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-candidate-review-patch /tmp/alice-candidate-patch.json \
+  --dry-run \
+  --json
+```
+
+Apply after validation or policy approval:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-candidate-review-patch /tmp/alice-candidate-patch.json \
+  --apply \
+  --json
+```
+
+Candidate review patches only change fact status (`active`, `superseded`, `retracted`) and optional compact card additions. Raw messages are never rewritten.
+
 ### Consolidate facts and cards
 
-Consolidation produces an inspectable plan for a subject/observer pair. It should usually run after reflection has produced candidate facts. Dry-run is read-only:
+Consolidation produces an inspectable plan for a subject/observer pair. It should usually run after reflection or candidate review has produced candidate/active facts. Dry-run is read-only:
 
 ```bash
 hermes-local-memory --db memory.sqlite consolidate \

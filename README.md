@@ -60,6 +60,8 @@ Hermes Local Memory is opinionated in the other direction:
 - Honcho identity maps for fragmented peers
 - reflection packets for stale raw-message windows
 - validated reflection patch dry-run/apply for candidate facts and session summaries
+- candidate review packets for safe imported fact promotion
+- validated candidate review patch dry-run/apply
 - deterministic consolidation dry-run/apply
 - consolidation packets for Hermes Agent review
 - all-pairs maintenance dry-run/apply

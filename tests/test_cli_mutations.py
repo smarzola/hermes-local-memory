@@ -304,6 +304,83 @@ def test_cli_maintenance_runs_all_pairs(tmp_path: Path, capsys) -> None:  # noqa
     assert store.get_fact("fact_candidate_alice")["status"] == "candidate"
 
 
+def test_cli_candidate_review_packet_and_apply_candidate_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
+    db_path = tmp_path / "memory.sqlite"
+    store = seed_store(db_path)
+    store.add_fact(
+        fact_id="fact_candidate_review",
+        subject_peer_id="simone",
+        observer_peer_id="ambrogio",
+        content="Simone prefers safe candidate review.",
+        kind="preference",
+        source="honcho-import",
+        status="candidate",
+    )
+
+    packet_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "candidate-review-packet",
+            "--peer",
+            "simone",
+            "--observer",
+            "ambrogio",
+            "--source",
+            "honcho-import",
+            "--json",
+        ],
+        capsys,
+    )
+    packet = json.loads(packet_output)
+    assert packet["schema"] == "hermes-local-memory.candidate-review-packet.v1"
+    assert [fact["id"] for fact in packet["candidate_facts"]] == ["fact_candidate_review"]
+
+    patch_path = tmp_path / "candidate-patch.json"
+    patch_path.write_text(
+        json.dumps(
+            {
+                "schema": "hermes-local-memory.candidate-review-patch.v1",
+                "subject_peer_id": "simone",
+                "observer_peer_id": "ambrogio",
+                "promote_fact_ids": ["fact_candidate_review"],
+                "card_additions": ["PREFERENCE: Prefers safe candidate review"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dry_run_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-candidate-review-patch",
+            str(patch_path),
+            "--dry-run",
+            "--json",
+        ],
+        capsys,
+    )
+    dry_run = json.loads(dry_run_output)
+    assert dry_run["validation"]["valid"] is True
+    assert store.get_fact("fact_candidate_review")["status"] == "candidate"
+
+    apply_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-candidate-review-patch",
+            str(patch_path),
+            "--apply",
+            "--json",
+        ],
+        capsys,
+    )
+    applied = json.loads(apply_output)
+    assert applied["writes"]["facts_promoted"] == 1
+    assert store.get_fact("fact_candidate_review")["status"] == "active"
+
+
 def test_cli_reflection_maintenance_and_apply_reflection_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
     db_path = tmp_path / "memory.sqlite"
     seed_store(db_path)

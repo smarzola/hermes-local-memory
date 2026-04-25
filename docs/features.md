@@ -201,6 +201,19 @@ hermes-local-memory --db memory.sqlite apply-reflection-patch /tmp/reflection-pa
 
 Reflection should run before consolidation in scheduled maintenance.
 
+### Candidate review
+
+Candidate review is the safe adoption path for noisy imported memories. It builds a source-filterable packet for one subject/observer pair, lets Hermes Agent choose narrow actions, and validates a structured patch before changing fact status or compact card items.
+
+Supported actions:
+
+- promote candidate facts to `active`
+- supersede duplicate candidates
+- retract wrong/noisy candidates
+- append compact card additions
+
+This is preferable to blindly applying broad imported-candidate promotion.
+
 ### Consolidation
 
 Consolidation is explicit, deterministic, and inspectable. It currently:
