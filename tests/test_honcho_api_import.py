@@ -163,8 +163,19 @@ def test_plan_honcho_export_import_from_api_export_does_not_write(tmp_path: Path
 def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> None:
     client = HonchoApiClient("https://honcho.example/v3", transport=FakeHonchoTransport())
     export = export_honcho_api(client, workspace="hermes")
+    export["messages"] = [
+        {
+            **export["messages"][0],
+            "id": f"msg-user-{index}",
+            "content": f"message {index}",
+        }
+        for index in range(30)
+    ]
     target_db = tmp_path / "local.sqlite"
     plan = plan_honcho_export_import(export, target_db=target_db)
+
+    assert plan["counts"]["messages"] == 30
+    assert len(plan["messages"]) == 30
 
     first = apply_honcho_import_plan(plan, backup=True)
     second = apply_honcho_import_plan(plan, backup=True)
@@ -176,7 +187,7 @@ def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> 
         "aliases_upserted": 2,
         "sessions_upserted": 1,
         "session_peers_upserted": 2,
-        "messages_inserted": 2,
+        "messages_inserted": 30,
         "messages_skipped_existing": 0,
         "cards_upserted": 3,
         "facts_inserted": 1,
@@ -185,7 +196,7 @@ def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> 
     assert second["backup_path"] is not None
     assert Path(second["backup_path"]).exists()
     assert second["writes"]["messages_inserted"] == 0
-    assert second["writes"]["messages_skipped_existing"] == 2
+    assert second["writes"]["messages_skipped_existing"] == 30
     assert second["writes"]["facts_inserted"] == 0
     assert second["writes"]["facts_skipped_existing"] == 1
 
@@ -193,7 +204,7 @@ def test_apply_honcho_api_plan_writes_data_and_is_idempotent(tmp_path: Path) -> 
     assert len(store.list_peers()) == 2
     assert len(store.list_aliases()) == 2
     assert len(store.list_sessions()) == 1
-    assert len(store.list_messages(limit=10)) == 2
+    assert len(store.list_messages(limit=100)) == 30
     assert len(store.list_cards(limit=10)) == 3
     assert len(store.list_facts(status="candidate", limit=10)) == 1
 
