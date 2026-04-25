@@ -34,9 +34,9 @@ Aliases map external identifiers or friendly names onto canonical peer IDs.
 Example:
 
 ```text
-telegram:151011988 -> telegram-151011988
-user               -> telegram-151011988
-ai                 -> Ambrogio
+telegram:1001 -> telegram-1001
+user               -> telegram-1001
+ai                 -> Bob
 ```
 
 Aliases include source, confidence, and verification flags.
@@ -87,8 +87,8 @@ provider.initialize(
     "session-1",
     hermes_home="/tmp/hermes-home",
     platform="telegram",
-    user_id="151011988",
-    agent_identity="Ambrogio",
+    user_id="1001",
+    agent_identity="Bob",
 )
 
 provider.sync_turn("Remember X", "Got it")
@@ -186,15 +186,15 @@ CLI examples:
 
 ```bash
 hermes-local-memory --db memory.sqlite consolidate \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --promote-candidates \
   --dry-run \
   --json
 
 hermes-local-memory --db memory.sqlite consolidate \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --promote-candidates \
   --apply \
   --json
@@ -217,7 +217,7 @@ The MVP does not call an LLM, delete raw history, or silently mutate memory duri
 The CLI can now add and retract facts:
 
 ```bash
-hermes-local-memory --db memory.sqlite fact add "..." --peer simone --observer ambrogio
+hermes-local-memory --db memory.sqlite fact add "..." --peer alice --observer bob
 hermes-local-memory --db memory.sqlite fact retract fact_abc123
 ```
 

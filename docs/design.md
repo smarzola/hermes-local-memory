@@ -58,9 +58,9 @@ A Telegram account, a human-readable name, and an imported Honcho peer name can 
 Example:
 
 ```text
-telegram:151011988 -> simone
-honcho:Simone      -> simone
-user               -> simone
+telegram:1001 -> alice
+honcho:Alice      -> alice
+user               -> alice
 ```
 
 This avoids hard-coded config values accidentally collapsing multiple humans into one peer.
@@ -253,15 +253,15 @@ Future behavior should add replace/retract actions and candidate fact workflows.
 ```markdown
 # Local Memory
 
-Subject peer: `telegram-151011988`
-Observer peer: `Ambrogio`
+Subject peer: `telegram-1001`
+Observer peer: `Bob`
 Session: `session-1`
 
 ## Peer card
-- Name: Simone
+- Name: Alice
 
 ## Durable facts
-- Simone wants memory migrations to preserve history. (kind=preference, source=manual, evidence=[1])
+- Alice wants memory migrations to preserve history. (kind=preference, source=manual, evidence=[1])
 ```
 
 The same block is available through `memory_context`.

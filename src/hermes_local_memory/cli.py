@@ -5,7 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from hermes_local_memory.consolidation import build_consolidation_plan
+from hermes_local_memory.consolidation import (
+    apply_consolidation_patch,
+    build_consolidation_packet,
+    build_consolidation_plan,
+)
 from hermes_local_memory.hermes_plugin import write_plugin_shim
 from hermes_local_memory.honcho_api import HonchoApiClient, export_honcho_api
 from hermes_local_memory.honcho_import import (
@@ -99,6 +103,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum facts per status to inspect",
     )
     consolidate.add_argument("--json", action="store_true", help="Print JSON")
+
+    packet = sub.add_parser("consolidation-packet", help="Build an agent review packet")
+    packet.add_argument("--peer", required=True, help="Subject peer id or alias")
+    packet.add_argument("--observer", required=True, help="Observer peer id or alias")
+    packet.add_argument("--max-candidates", type=int, default=100)
+    packet.add_argument("--max-active", type=int, default=100)
+    packet.add_argument("--json", action="store_true", help="Print JSON")
+
+    apply_patch = sub.add_parser("apply-patch", help="Validate or apply a consolidation patch")
+    apply_patch.add_argument("patch_file", help="Path to consolidation patch JSON")
+    patch_mode = apply_patch.add_mutually_exclusive_group()
+    patch_mode.add_argument("--dry-run", action="store_true", help="Validate only")
+    patch_mode.add_argument("--apply", action="store_true", help="Apply patch")
+    apply_patch.add_argument("--json", action="store_true", help="Print JSON")
 
     alias = sub.add_parser("alias", help="Mutate aliases explicitly")
     alias_sub = alias.add_subparsers(dest="alias_command", required=True)
@@ -298,6 +316,25 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
         )
         _print_plan(plan, as_json=args.json)
+        return 0
+    if args.command == "consolidation-packet":
+        peer_id = _resolve_required_peer_id(store, args.peer)
+        observer_id = _resolve_required_peer_id(store, args.observer)
+        packet = build_consolidation_packet(
+            store,
+            subject_peer_id=peer_id,
+            observer_peer_id=observer_id,
+            max_candidates=args.max_candidates,
+            max_active=args.max_active,
+        )
+        _print_one(packet, as_json=args.json)
+        return 0
+    if args.command == "apply-patch":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        patch = json.loads(Path(args.patch_file).expanduser().read_text(encoding="utf-8"))
+        result = apply_consolidation_patch(store, patch, apply=args.apply)
+        _print_one(result, as_json=args.json)
         return 0
     if args.command == "alias":
         peer_id = _resolve_required_peer_id(store, args.peer)

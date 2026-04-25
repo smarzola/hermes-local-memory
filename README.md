@@ -24,7 +24,7 @@ Hermes Local Memory is opinionated in the other direction:
 - **No memory server** — no FastAPI, Docker, Redis, Postgres, or daemon required.
 - **Agent-integrated** — Hermes accesses memory through normal tools like `memory_context`, `memory_search`, `memory_conclude`, and `memory_consolidate`.
 - **Inspectable by design** — humans and agents can list peers, aliases, sessions, cards, messages, facts, and rendered context.
-- **Identity is data** — aliases like `telegram:151011988`, `honcho:Simone`, and `user` point to canonical peers such as `simone`.
+- **Identity is data** — aliases like `telegram:1001`, `honcho:Alice`, and `user` point to canonical peers such as `alice`.
 - **Raw history is preserved** — imports copy raw messages; identity repair does not rewrite historical rows unless an explicit tool says so.
 - **Consolidation is explicit** — deterministic dry-runs produce plans; future agent-assisted consolidation should produce validated patches.
 - **Migration-safe** — Honcho import is additive/idempotent, supports identity maps, and never mutates Honcho.
@@ -57,6 +57,8 @@ Hermes Local Memory is opinionated in the other direction:
 - Honcho API dry-run/apply import
 - Honcho identity maps for fragmented peers
 - deterministic consolidation dry-run/apply
+- consolidation packets for Hermes Agent review
+- validated consolidation patch dry-run/apply
 - Hermes plugin shim installation
 
 ### Data model
@@ -80,7 +82,7 @@ The SQLite store includes:
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/smarzola/hermes-local-memory.git
+git clone https://github.com/<owner>/hermes-local-memory.git
 cd hermes-local-memory
 python -m venv .venv
 source .venv/bin/activate
@@ -145,11 +147,11 @@ Inspect memory:
 ```bash
 hermes-local-memory --db memory.sqlite peers --json
 hermes-local-memory --db memory.sqlite aliases --json
-hermes-local-memory --db memory.sqlite cards --peer simone --observer ambrogio --json
-hermes-local-memory --db memory.sqlite facts --peer simone --observer ambrogio --json
+hermes-local-memory --db memory.sqlite cards --peer alice --observer bob --json
+hermes-local-memory --db memory.sqlite facts --peer alice --observer bob --json
 hermes-local-memory --db memory.sqlite context \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --query "what should I remember?"
 ```
 
@@ -157,9 +159,9 @@ Add explicit memory:
 
 ```bash
 hermes-local-memory --db memory.sqlite fact add \
-  "Simone prefers local-first memory systems." \
-  --peer simone \
-  --observer ambrogio \
+  "Alice prefers local-first memory systems." \
+  --peer alice \
+  --observer bob \
   --kind preference \
   --json
 ```
@@ -167,8 +169,8 @@ hermes-local-memory --db memory.sqlite fact add \
 Repair an alias:
 
 ```bash
-hermes-local-memory --db memory.sqlite alias add telegram:151011988 \
-  --peer simone \
+hermes-local-memory --db memory.sqlite alias add telegram:1001 \
+  --peer alice \
   --source telegram \
   --verified \
   --json
@@ -178,8 +180,8 @@ Preview consolidation:
 
 ```bash
 hermes-local-memory --db memory.sqlite consolidate \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --promote-candidates \
   --dry-run \
   --json
@@ -189,11 +191,23 @@ Apply only after review:
 
 ```bash
 hermes-local-memory --db memory.sqlite consolidate \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --promote-candidates \
   --apply \
   --json
+```
+
+Build an agent review packet and apply a validated patch:
+
+```bash
+hermes-local-memory --db memory.sqlite consolidation-packet \
+  --peer alice \
+  --observer bob \
+  --json > /tmp/alice-packet.json
+
+hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --dry-run --json
+hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --apply --json
 ```
 
 ---
@@ -229,23 +243,23 @@ Use identity maps to collapse fragmented Honcho identities into canonical local 
 ```json
 {
   "peers": {
-    "honcho:151011988": "simone",
-    "honcho:Simone": "simone",
-    "honcho:7973745978": "andra",
-    "honcho:Ambrogio": "ambrogio"
+    "honcho:1001": "alice",
+    "honcho:Alice": "alice",
+    "honcho:1002": "carol",
+    "honcho:Bob": "bob"
   },
   "patterns": {
-    "honcho:user-default*": "simone"
+    "honcho:user-default*": "alice"
   },
   "display_names": {
-    "simone": "Simone",
-    "andra": "Andra",
-    "ambrogio": "Ambrogio"
+    "alice": "Alice",
+    "carol": "Carol",
+    "bob": "Bob"
   },
   "kinds": {
-    "simone": "human",
-    "andra": "human",
-    "ambrogio": "ai"
+    "alice": "human",
+    "carol": "human",
+    "bob": "ai"
   }
 }
 ```
@@ -257,6 +271,99 @@ Then pass:
 ```
 
 See [CLI docs](docs/cli.md) for full importer behavior.
+
+---
+
+## How the memory flow works
+
+Local Memory separates **raw history**, **durable facts**, **compact cards**, and **agent decisions**.
+
+```text
+Conversation turn
+  -> raw messages are stored immutably
+  -> explicit facts can be added with evidence
+  -> search/context retrieve facts and cards deterministically
+  -> consolidation periodically reviews candidates and card quality
+  -> Hermes Agent decides what to promote, supersede, retract, or summarize
+  -> Local Memory validates and applies structured changes
+```
+
+The important split is:
+
+- **Local Memory** stores, retrieves, validates, and applies auditable changes.
+- **Hermes Agent** reasons about ambiguous memory quality decisions.
+- **Hermes cron/scheduler** runs recurring maintenance jobs.
+
+Why maintenance is needed:
+
+- conversations create duplicate or overlapping memories
+- imported systems can contain stale identities or noisy derived facts
+- candidate facts need promotion, superseding, or retraction
+- compact cards should stay useful instead of growing into transcripts
+- raw history should remain intact while derived layers improve over time
+
+This is why the project supports both deterministic consolidation and agent-orchestrated scheduled maintenance.
+
+---
+
+## Setup checklist for agents
+
+If a human hands this repository to an agent, the agent should be able to bootstrap safely with this checklist:
+
+1. **Inspect repository state**
+
+   ```bash
+   git status --short
+   PYTHONPATH=src pytest -q
+   ruff check .
+   ```
+
+2. **Install the Hermes shim without switching providers**
+
+   ```bash
+   PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
+   ```
+
+3. **Create or choose a trial DB**
+
+   ```bash
+   export LOCAL_MEMORY_DB=~/.hermes/memory/local_memory_trial.sqlite
+   ```
+
+4. **Import external memory only into the trial DB first**
+
+   ```bash
+   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" import honcho-api \
+     --base-url http://localhost:8000/v3 \
+     --workspace hermes \
+     --identity-map ~/.hermes/local-memory-identity-map.json \
+     --dry-run \
+     --json
+   ```
+
+5. **Inspect identity and context**
+
+   ```bash
+   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" peers --json
+   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" aliases --json
+   PYTHONPATH=src python -m hermes_local_memory.cli --db "$LOCAL_MEMORY_DB" context \
+     --peer alice \
+     --observer bob \
+     --query "memory quality"
+   ```
+
+6. **Set up scheduled maintenance in Hermes, not in this package**
+
+   Use the cron prompt in [Scheduled maintenance with Hermes cron](#scheduled-maintenance-with-hermes-cron). Start with the trial DB. Only move to a live DB once import, identity mapping, context, and rollback expectations are clear.
+
+7. **Only switch Hermes after validation**
+
+   ```yaml
+   memory:
+     provider: local_memory
+   ```
+
+Full command reference: [docs/cli.md](docs/cli.md).
 
 ---
 
@@ -313,10 +420,10 @@ Example Hermes cron prompt:
 
 ```text
 Run a Hermes Local Memory maintenance job.
-Repository: /home/smarzola/hermes-local-memory
+Repository: /path/to/hermes-local-memory
 Database: ~/.hermes/memory/local_memory_trial_mapped.sqlite
-Subject: simone
-Observer: ambrogio
+Subject: alice
+Observer: bob
 
 Use Local Memory as the auditable substrate and use Hermes reasoning for judgment.
 Inspect peers, aliases, the current card, candidate facts, active facts, and rendered context.

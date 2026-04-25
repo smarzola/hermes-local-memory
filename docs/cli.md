@@ -26,6 +26,7 @@ Current write commands are explicit repair/mutation commands:
 - `fact add` / `fact retract`
 - `card replace`
 - `consolidate --apply`
+- `apply-patch --apply`
 
 `install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
 
@@ -78,9 +79,9 @@ hermes-local-memory --db memory.sqlite aliases --json
 Shows alias mappings such as:
 
 ```text
-telegram:151011988 -> simone
-user -> simone
-ai -> ambrogio
+telegram:1001 -> alice
+user -> alice
+ai -> bob
 ```
 
 ### List sessions
@@ -96,8 +97,8 @@ Shows conversation lanes and their metadata.
 
 ```bash
 hermes-local-memory --db memory.sqlite cards
-hermes-local-memory --db memory.sqlite cards --peer simone
-hermes-local-memory --db memory.sqlite cards --peer telegram:151011988 --observer ambrogio --json
+hermes-local-memory --db memory.sqlite cards --peer alice
+hermes-local-memory --db memory.sqlite cards --peer telegram:1001 --observer bob --json
 ```
 
 Cards are compact profile snapshots used for cheap context injection.
@@ -106,8 +107,8 @@ Cards are compact profile snapshots used for cheap context injection.
 
 ```bash
 hermes-local-memory --db memory.sqlite messages
-hermes-local-memory --db memory.sqlite messages --session telegram-dm-151011988
-hermes-local-memory --db memory.sqlite messages --peer simone --json
+hermes-local-memory --db memory.sqlite messages --session telegram-dm-1001
+hermes-local-memory --db memory.sqlite messages --peer alice --json
 ```
 
 Messages are raw history. This command is read-only and is intended for verification and evidence inspection.
@@ -116,8 +117,8 @@ Messages are raw history. This command is read-only and is intended for verifica
 
 ```bash
 hermes-local-memory --db memory.sqlite facts
-hermes-local-memory --db memory.sqlite facts --peer simone
-hermes-local-memory --db memory.sqlite facts --peer telegram:151011988 --json
+hermes-local-memory --db memory.sqlite facts --peer alice
+hermes-local-memory --db memory.sqlite facts --peer telegram:1001 --json
 ```
 
 Options:
@@ -131,7 +132,7 @@ Options:
 
 ```bash
 hermes-local-memory --db memory.sqlite search "migration history"
-hermes-local-memory --db memory.sqlite search "migration history" --peer simone --json
+hermes-local-memory --db memory.sqlite search "migration history" --peer alice --json
 ```
 
 Search currently uses SQLite FTS5 over active durable facts.
@@ -140,8 +141,8 @@ Search currently uses SQLite FTS5 over active durable facts.
 
 ```bash
 hermes-local-memory --db memory.sqlite context \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --query "migration history"
 ```
 
@@ -198,8 +199,8 @@ Consolidation produces an inspectable plan for a subject/observer pair. Dry-run 
 
 ```bash
 hermes-local-memory --db memory.sqlite consolidate \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --promote-candidates \
   --dry-run \
   --json
@@ -209,8 +210,8 @@ Apply only after reviewing the plan:
 
 ```bash
 hermes-local-memory --db memory.sqlite consolidate \
-  --peer simone \
-  --observer ambrogio \
+  --peer alice \
+  --observer bob \
   --promote-candidates \
   --apply \
   --json
@@ -224,7 +225,47 @@ Current deterministic behavior:
 - proposes card additions from active facts and promoted candidates
 - never deletes raw messages or facts
 
-For imported Honcho data, expect many noisy candidate facts. Prefer dry-run reports and selective review over broad auto-apply.
+For imported Honcho data, expect many noisy candidate facts. Prefer agent review, scoped apply decisions, and after-action summaries over blind broad promotion.
+
+### Build a consolidation packet for Hermes Agent
+
+A packet gives Hermes Agent the current card, active facts, candidate facts, aliases, and safety rules in one JSON object:
+
+```bash
+hermes-local-memory --db memory.sqlite consolidation-packet \
+  --peer alice \
+  --observer bob \
+  --max-candidates 100 \
+  --json > /tmp/alice-packet.json
+```
+
+Hermes Agent can reason over this packet and produce a patch with this shape:
+
+```json
+{
+  "subject_peer_id": "alice",
+  "observer_peer_id": "bob",
+  "card_replace": ["Name: Alice", "PREFERENCE: Prefers local-first memory"],
+  "promote_fact_ids": ["fact_candidate_1"],
+  "supersede_fact_ids": [{"id": "fact_duplicate", "reason": "covered by card"}],
+  "retract_fact_ids": [],
+  "new_facts": []
+}
+```
+
+Validate without writing:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --dry-run --json
+```
+
+Apply after validation or policy approval:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-patch /tmp/alice-patch.json --apply --json
+```
+
+Patch application validates peer/fact IDs, never deletes raw messages, and changes fact lifecycle with status updates (`active`, `superseded`, `retracted`).
 
 ### Plan a Honcho SQLite fixture import
 
@@ -247,14 +288,14 @@ Repair commands mutate the DB and should be used deliberately. Prefer `--json` a
 ### Add or move aliases
 
 ```bash
-hermes-local-memory --db memory.sqlite alias add telegram:7973745978 \
-  --peer andra \
+hermes-local-memory --db memory.sqlite alias add telegram:1002 \
+  --peer carol \
   --source telegram \
   --verified \
   --json
 
-hermes-local-memory --db memory.sqlite alias move telegram:7973745978 \
-  --peer simone \
+hermes-local-memory --db memory.sqlite alias move telegram:1002 \
+  --peer alice \
   --json
 ```
 
@@ -264,9 +305,9 @@ hermes-local-memory --db memory.sqlite alias move telegram:7973745978 \
 
 ```bash
 hermes-local-memory --db memory.sqlite fact add \
-  "Simone prefers local-first tools." \
-  --peer simone \
-  --observer ambrogio \
+  "Alice prefers local-first tools." \
+  --peer alice \
+  --observer bob \
   --kind preference \
   --json
 
@@ -280,17 +321,17 @@ Retracting a fact marks it `retracted`; it does not delete the row.
 Cards are replaced as a full JSON list of strings:
 
 ```bash
-cat > /tmp/simone-card.json <<'JSON'
+cat > /tmp/alice-card.json <<'JSON'
 [
-  "Name: Simone",
+  "Name: Alice",
   "Preference: explicit repair commands"
 ]
 JSON
 
 hermes-local-memory --db memory.sqlite card replace \
-  --peer simone \
-  --observer ambrogio \
-  --from-file /tmp/simone-card.json \
+  --peer alice \
+  --observer bob \
+  --from-file /tmp/alice-card.json \
   --json
 ```
 
@@ -313,10 +354,10 @@ Example autonomous scheduled job prompt:
 
 ```text
 Run a Hermes Local Memory maintenance job.
-Repository: /home/smarzola/hermes-local-memory
+Repository: /path/to/hermes-local-memory
 Database: ~/.hermes/memory/local_memory_trial_mapped.sqlite
-Subject: simone
-Observer: ambrogio
+Subject: alice
+Observer: bob
 
 Use Hermes Agent reasoning to make the maintenance decision. Use Local Memory as the auditable substrate.
 Inspect peers, aliases, cards, active facts, candidate facts, and rendered context.

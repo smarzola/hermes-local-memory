@@ -202,3 +202,64 @@ def test_cli_consolidate_dry_run_and_apply(tmp_path: Path, capsys) -> None:  # n
         subject_peer_id="simone",
         observer_peer_id="ambrogio",
     )
+
+
+def test_cli_consolidation_packet_and_apply_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
+    db_path = tmp_path / "memory.sqlite"
+    store = seed_store(db_path)
+    store.add_fact(
+        fact_id="fact_candidate_patch",
+        subject_peer_id="simone",
+        observer_peer_id="ambrogio",
+        content="Simone prefers patch-based consolidation.",
+        kind="preference",
+        status="candidate",
+    )
+
+    packet_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "consolidation-packet",
+            "--peer",
+            "simone",
+            "--observer",
+            "ambrogio",
+            "--json",
+        ],
+        capsys,
+    )
+    packet = json.loads(packet_output)
+    assert packet["subject_peer_id"] == "simone"
+    assert any(fact["id"] == "fact_candidate_patch" for fact in packet["candidate_facts"])
+
+    patch_path = tmp_path / "patch.json"
+    patch_path.write_text(
+        json.dumps(
+            {
+                "subject_peer_id": "simone",
+                "observer_peer_id": "ambrogio",
+                "promote_fact_ids": ["fact_candidate_patch"],
+                "card_replace": ["Name: Alice", "Prefers patch-based consolidation"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dry_run_output = run_cli(
+        ["--db", str(db_path), "apply-patch", str(patch_path), "--dry-run", "--json"],
+        capsys,
+    )
+    dry_run = json.loads(dry_run_output)
+    assert dry_run["mode"] == "dry-run"
+    assert dry_run["validation"]["valid"] is True
+    assert store.get_fact("fact_candidate_patch")["status"] == "candidate"
+
+    apply_output = run_cli(
+        ["--db", str(db_path), "apply-patch", str(patch_path), "--apply", "--json"],
+        capsys,
+    )
+    applied = json.loads(apply_output)
+    assert applied["mode"] == "apply"
+    assert applied["writes"]["facts_promoted"] == 1
+    assert store.get_fact("fact_candidate_patch")["status"] == "active"
