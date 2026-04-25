@@ -600,40 +600,134 @@ class LocalMemoryStore:
         query: str | None = None,
         max_facts: int = 8,
     ) -> str:
+        subject = self.resolve_peer(subject_peer_id)
+        observer = self.resolve_peer(observer_peer_id)
+        session = self.get_session(session_id) if session_id else None
+        aliases = self._aliases_for_peer(subject_peer_id)
         card = self.get_card(subject_peer_id=subject_peer_id, observer_peer_id=observer_peer_id)
-        facts = self.search(query or subject_peer_id, peer_id=subject_peer_id, limit=max_facts)
-        if not facts:
-            with self.connect() as conn:
-                rows = conn.execute(
-                    """
-                    select * from facts
-                    where subject_peer_id = ? and observer_peer_id = ? and status = 'active'
-                    order by updated_at desc, created_at desc
-                    limit ?
-                    """,
-                    (subject_peer_id, observer_peer_id, max_facts),
-                ).fetchall()
-                facts = [self._hydrate_fact(row) for row in rows]
+        durable_facts = self._recent_active_facts(
+            subject_peer_id=subject_peer_id,
+            observer_peer_id=observer_peer_id,
+            limit=max_facts,
+        )
+        retrieved = self.search(query, peer_id=subject_peer_id, limit=max_facts) if query else []
+        retrieved = [
+            fact
+            for fact in retrieved
+            if fact["observer_peer_id"] == observer_peer_id
+            and fact["id"] not in {item["id"] for item in durable_facts}
+        ]
+        summary = self._latest_session_summary(session_id) if session_id else None
 
+        subject_name = subject["display_name"] if subject else subject_peer_id
+        observer_name = observer["display_name"] if observer else observer_peer_id
         lines = ["# Local Memory", ""]
-        lines.append(f"Subject peer: `{subject_peer_id}`")
-        lines.append(f"Observer peer: `{observer_peer_id}`")
+        lines.extend(
+            [
+                "## Identity",
+                f"Subject peer: `{subject_peer_id}`",
+                f"Subject display name: {subject_name}",
+                f"Observer peer: `{observer_peer_id}`",
+                f"Observer display name: {observer_name}",
+            ]
+        )
+        if aliases:
+            lines.append("Aliases: " + ", ".join(f"`{alias}`" for alias in aliases[:8]))
         if session_id:
             lines.append(f"Session: `{session_id}`")
+            if session and session.get("title"):
+                lines.append(f"Session title: {session['title']}")
         lines.append("")
 
-        if card:
-            lines.extend(["## Peer card", *[f"- {item}" for item in card], ""])
+        lines.append("## Compact peer card")
+        lines.extend([f"- {item}" for item in card] if card else ["(no card)"])
+        lines.append("")
 
-        if facts:
-            lines.append("## Durable facts")
-            for fact in facts:
-                evidence = fact.get("evidence_message_ids") or []
-                evidence_label = f", evidence={evidence}" if evidence else ""
-                lines.append(
-                    f"- {fact['content']} "
-                    f"(kind={fact['kind']}, source={fact['source']}{evidence_label})"
-                )
+        lines.append("## Durable facts")
+        if durable_facts:
+            for fact in durable_facts:
+                lines.append(self._format_fact_line(fact))
+        else:
+            lines.append("(no active facts)")
+        lines.append("")
+
+        if summary:
+            lines.append("## Current session summary")
+            covered = _format_covered_range(summary)
+            model = f", model={summary['model']}" if summary.get("model") else ""
+            lines.append(f"- {summary['content']} (covered={covered}{model})")
+            lines.append("")
+
+        if retrieved:
+            lines.append("## Relevant retrieved memories")
+            for fact in retrieved:
+                lines.append(self._format_fact_line(fact))
             lines.append("")
 
         return "\n".join(lines).strip()
+
+    def _aliases_for_peer(self, peer_id: str) -> list[str]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                select alias
+                from peer_aliases
+                where peer_id = ?
+                order by verified desc, alias
+                """,
+                (peer_id,),
+            ).fetchall()
+            return [str(row["alias"]) for row in rows]
+
+    def _recent_active_facts(
+        self,
+        *,
+        subject_peer_id: str,
+        observer_peer_id: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                select * from facts
+                where subject_peer_id = ? and observer_peer_id = ? and status = 'active'
+                order by updated_at desc, created_at desc, id
+                limit ?
+                """,
+                (subject_peer_id, observer_peer_id, limit),
+            ).fetchall()
+            return [self._hydrate_fact(row) for row in rows]
+
+    def _latest_session_summary(self, session_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                select * from summaries
+                where scope = 'session' and scope_id = ?
+                order by covered_to_message_id desc, updated_at desc, created_at desc
+                limit 1
+                """,
+                (session_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    @staticmethod
+    def _format_fact_line(fact: dict[str, Any]) -> str:
+        evidence = fact.get("evidence_message_ids") or []
+        evidence_label = f", evidence={evidence}" if evidence else ""
+        return (
+            f"- {fact['content']} "
+            f"(kind={fact['kind']}, source={fact['source']}{evidence_label})"
+        )
+
+
+def _format_covered_range(summary: dict[str, Any]) -> str:
+    start = summary.get("covered_from_message_id")
+    end = summary.get("covered_to_message_id")
+    if start is None and end is None:
+        return "unknown"
+    if start is None:
+        return f"through {end}"
+    if end is None:
+        return f"from {start}"
+    return f"{start}-{end}"

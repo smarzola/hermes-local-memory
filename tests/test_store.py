@@ -98,7 +98,7 @@ def test_context_block_is_deterministic_and_source_labeled(tmp_path: Path) -> No
     )
 
     assert "# Local Memory" in context
-    assert "## Peer card" in context
+    assert "## Compact peer card" in context
     assert "Name: Simone" in context
     assert "## Durable facts" in context
     assert "preserve history" in context

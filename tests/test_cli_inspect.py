@@ -118,6 +118,6 @@ def test_cli_searches_and_builds_context(tmp_path: Path, capsys) -> None:  # noq
 
     assert "Simone prefers inspectable local memory." in search_output
     assert "# Local Memory" in context_output
-    assert "## Peer card" in context_output
+    assert "## Compact peer card" in context_output
     assert "Name: Simone" in context_output
     assert "source=manual" in context_output

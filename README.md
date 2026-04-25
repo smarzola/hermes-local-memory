@@ -319,13 +319,14 @@ The important split is:
 - **Hermes Agent** reasons about ambiguous memory quality decisions.
 - **Hermes cron/scheduler** runs recurring reflection before consolidation.
 
-The profile/card is **not** the only thing injected. Normal prompt context should be composed from:
+The profile/card is **not** the only thing injected. Context Builder v2 composes ordinary prompt context from:
 
 1. identity/session information,
-2. the compact subject/observer card,
-3. high-signal durable facts,
-4. the current session summary when available,
-5. relevant retrieved facts/summaries for the current query.
+2. aliases for the current subject peer,
+3. the compact subject/observer card,
+4. active durable facts,
+5. the current session summary when available,
+6. relevant retrieved active facts for the current query.
 
 Candidate facts and raw message windows are usually **not** injected into ordinary conversations. They are primarily used during maintenance/review jobs unless explicitly requested.
 

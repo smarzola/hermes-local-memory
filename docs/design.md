@@ -274,25 +274,35 @@ Future behavior should add replace/retract actions and candidate fact workflows.
 
 ## Context injection
 
-`prefetch(query)` currently returns a deterministic Markdown block like:
+`prefetch(query)` and `memory_context` return the same deterministic Markdown block. Context Builder v2 renders source-labeled layers instead of treating the profile/card as the only memory surface:
 
 ```markdown
 # Local Memory
 
-Subject peer: `telegram-1001`
-Observer peer: `Bob`
-Session: `session-1`
+## Identity
+Subject peer: `alice`
+Subject display name: Alice
+Observer peer: `bob`
+Observer display name: Bob
+Aliases: `telegram:1001`, `user`
+Session: `telegram-dm-1001`
+Session title: Telegram DM with Alice
 
-## Peer card
+## Compact peer card
 - Name: Alice
+- Prefers local-first memory
 
 ## Durable facts
 - Alice wants memory migrations to preserve history. (kind=preference, source=manual, evidence=[1])
+
+## Current session summary
+- Alice and Bob discussed shadow adoption. (covered=1-12, model=hermes-agent)
+
+## Relevant retrieved memories
+- Alice is adopting a local memory provider for Hermes. (kind=project, source=agent-reflection)
 ```
 
-The same block is available through `memory_context`.
-
-The intended injection model is broader than "profile only": the compact peer card is the cheapest layer, but context should also include high-signal durable facts, session summaries/checkpoints when available, and query-relevant retrieval. Candidate facts and raw message windows should normally stay out of ordinary prompt injection unless the current task is a memory review.
+The compact peer card remains the cheapest layer, but context also includes identity/session information, active durable facts, the latest session summary when available, and query-relevant active facts. Candidate facts and raw message windows are intentionally excluded from ordinary prompt injection unless the current task is a memory review.
 
 Trivial prompts such as `ok`, `yes`, and `thanks` do not inject memory.
 

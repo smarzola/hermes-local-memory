@@ -71,7 +71,7 @@ Sessions represent conversation lanes. A Telegram DM, CLI conversation, or group
 
 ### Inspectable context injection
 
-`prefetch()` builds an injected context block. `memory_context` returns the exact same block for inspection.
+`prefetch()` builds an injected context block. `memory_context` returns the exact same block for inspection. Context Builder v2 renders explicit sections for identity/session metadata, aliases, compact peer card, active durable facts, latest session summary, and query-relevant active facts. Candidate facts and raw message windows are excluded from ordinary prompt injection.
 
 ### GitHub CI
 
