@@ -39,7 +39,7 @@ user               -> telegram-1001
 ai                 -> Bob
 ```
 
-Aliases include source, confidence, and verification flags.
+Aliases include source, confidence, and verification flags. This makes peers a first-class agent-maintained layer: Hermes can review new platform identities, map obvious aliases to canonical peers, and escalate ambiguous identities for human help instead of silently fragmenting memory.
 
 ### Sessions
 
@@ -102,6 +102,7 @@ The provider exposes these tool schemas:
 - `memory_conclude`
 - `memory_consolidate`
 - `memory_maintenance`
+- `memory_peer_review`
 - `memory_reflection_maintenance`
 
 ## Additional feature areas
@@ -224,6 +225,18 @@ Card review is the migration cleanup path for imported compact cards. Imported c
 4. apply only after dry-run or policy approval
 
 Card review replaces only the derived card. It does not mutate facts, summaries, aliases, sessions, or raw messages.
+
+### Peer review
+
+Peer review gives Hermes Agent control of peer identity maintenance. It currently:
+
+1. discovers unverified or platform-shaped peers such as `telegram-1001` or `honcho-abc`
+2. builds a `peer-review-packet` with their aliases and candidate canonical peers
+3. lets Hermes Agent decide whether to move aliases to existing canonical peers
+4. lets Hermes Agent emit human prompts when the identity is ambiguous
+5. validates and applies alias moves only with `apply-peer-review-patch --apply`
+
+Peer review does not rewrite raw messages or delete peer rows. It changes the alias layer so future context, facts, and cards resolve to the right canonical person.
 
 ### Consolidation
 

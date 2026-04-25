@@ -44,6 +44,7 @@ def test_write_plugin_shim_creates_hermes_discoverable_register_function(tmp_pat
         "memory_conclude",
         "memory_consolidate",
         "memory_maintenance",
+        "memory_peer_review",
         "memory_reflection_maintenance",
     }
 

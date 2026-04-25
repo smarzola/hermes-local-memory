@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from hermes_local_memory.consolidation import build_consolidation_plan, build_maintenance_plan
+from hermes_local_memory.peer_review import build_peer_review_packet
 from hermes_local_memory.reflection import build_reflection_maintenance_plan
 from hermes_local_memory.store import LocalMemoryStore
 
@@ -121,6 +122,18 @@ MAINTENANCE_SCHEMA = {
                 "description": "Apply the proposed changes. Defaults to false/dry-run.",
             },
             "limit": {"type": "integer", "description": "Maximum facts per status to inspect."},
+        },
+        "required": [],
+    },
+}
+
+PEER_REVIEW_SCHEMA = {
+    "name": "memory_peer_review",
+    "description": "Build a peer review packet for unresolved or unverified peer identities.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "limit": {"type": "integer", "description": "Maximum peers to include, default 100."},
         },
         "required": [],
     },
@@ -247,6 +260,7 @@ class LocalMemoryProvider:
             CONCLUDE_SCHEMA,
             CONSOLIDATE_SCHEMA,
             MAINTENANCE_SCHEMA,
+            PEER_REVIEW_SCHEMA,
             REFLECTION_MAINTENANCE_SCHEMA,
         ]
 
@@ -264,6 +278,8 @@ class LocalMemoryProvider:
                 return self._handle_consolidate(args)
             if tool_name == "memory_maintenance":
                 return self._handle_maintenance(args)
+            if tool_name == "memory_peer_review":
+                return self._handle_peer_review(args)
             if tool_name == "memory_reflection_maintenance":
                 return self._handle_reflection_maintenance(args)
         except Exception as exc:
@@ -340,6 +356,11 @@ class LocalMemoryProvider:
             limit=int(args.get("limit") or 500),
         )
         return self._ok(plan=plan)
+
+    def _handle_peer_review(self, args: dict[str, Any]) -> str:
+        store = self._require_store()
+        packet = build_peer_review_packet(store, limit=int(args.get("limit") or 100))
+        return self._ok(packet=packet)
 
     def _handle_reflection_maintenance(self, args: dict[str, Any]) -> str:
         store = self._require_store()

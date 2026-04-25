@@ -24,6 +24,7 @@ from hermes_local_memory.honcho_import import (
     plan_honcho_export_import,
     plan_honcho_import,
 )
+from hermes_local_memory.peer_review import apply_peer_review_patch, build_peer_review_packet
 from hermes_local_memory.reflection import (
     apply_reflection_patch,
     build_reflection_maintenance_plan,
@@ -168,6 +169,23 @@ def build_parser() -> argparse.ArgumentParser:
     card_mode.add_argument("--dry-run", action="store_true")
     card_mode.add_argument("--apply", action="store_true")
     apply_card.add_argument("--json", action="store_true", help="Print JSON")
+
+    peer_packet = sub.add_parser(
+        "peer-review-packet",
+        help="Build an agent packet for reviewing unresolved peer identities",
+    )
+    peer_packet.add_argument("--limit", type=int, default=100)
+    peer_packet.add_argument("--json", action="store_true", help="Print JSON")
+
+    apply_peer = sub.add_parser(
+        "apply-peer-review-patch",
+        help="Validate or apply agent peer mapping decisions",
+    )
+    apply_peer.add_argument("patch_file", help="Path to peer review patch JSON")
+    peer_mode = apply_peer.add_mutually_exclusive_group()
+    peer_mode.add_argument("--dry-run", action="store_true")
+    peer_mode.add_argument("--apply", action="store_true")
+    apply_peer.add_argument("--json", action="store_true", help="Print JSON")
 
     maintenance = sub.add_parser("maintenance", help="Run consolidation across all pairs")
     maintenance.add_argument("--promote-candidates", action="store_true")
@@ -478,6 +496,18 @@ def main(argv: list[str] | None = None) -> int:
             max_candidates=10000,
         )
         result = apply_card_review_patch(store, packet, patch, apply=args.apply)
+        _print_one(result, as_json=args.json)
+        return 0
+    if args.command == "peer-review-packet":
+        packet = build_peer_review_packet(store, limit=args.limit)
+        _print_one(packet, as_json=args.json)
+        return 0
+    if args.command == "apply-peer-review-patch":
+        if args.dry_run == args.apply:
+            raise ValueError("Specify exactly one of --dry-run or --apply")
+        patch = json.loads(Path(args.patch_file).expanduser().read_text(encoding="utf-8"))
+        packet = build_peer_review_packet(store, limit=10000)
+        result = apply_peer_review_patch(store, packet, patch, apply=args.apply)
         _print_one(result, as_json=args.json)
         return 0
     if args.command == "maintenance":

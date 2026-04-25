@@ -18,6 +18,7 @@ The inspection and planning commands in this document are read-only:
 - `import honcho --dry-run`
 - `candidate-review-packet`
 - `card-review-packet`
+- `peer-review-packet`
 
 They do not mutate the database. They are intended for humans and agents to verify identity mappings, durable facts, and context injection before enabling or migrating a live memory provider.
 
@@ -31,6 +32,7 @@ Current write commands are explicit repair/mutation commands:
 - `apply-patch --apply`
 - `apply-candidate-review-patch --apply`
 - `apply-card-review-patch --apply`
+- `apply-peer-review-patch --apply`
 - `apply-reflection-patch --apply`
 
 `install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
@@ -357,6 +359,59 @@ hermes-local-memory --db memory.sqlite apply-card-review-patch /tmp/alice-card-p
 ```
 
 Card review is a full-card replacement only. It does not mutate facts and never rewrites raw messages.
+
+### Review unresolved peers
+
+Peer review gives Hermes Agent control over identity mapping while keeping ambiguity safe. A maintenance job can build a packet of newly observed or unverified peers. The agent may move obvious platform aliases to canonical peers, or it may emit human prompts when it cannot safely decide.
+
+Build a packet:
+
+```bash
+hermes-local-memory --db memory.sqlite peer-review-packet \
+  --json > /tmp/peer-review.json
+```
+
+Hermes Agent can produce a patch like:
+
+```json
+{
+  "schema": "hermes-local-memory.peer-review-patch.v1",
+  "alias_moves": [
+    {
+      "alias": "telegram:1001",
+      "to_peer_id": "alice",
+      "source": "agent-peer-review",
+      "confidence": 0.92,
+      "reason": "Conversation context and display name suggest Alice."
+    }
+  ],
+  "human_prompts": [
+    {
+      "peer_id": "telegram-1002",
+      "question": "Who is Telegram user 1002?",
+      "suggested_aliases": ["telegram:1002"]
+    }
+  ]
+}
+```
+
+Validate without writing:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-peer-review-patch /tmp/peer-review-patch.json \
+  --dry-run \
+  --json
+```
+
+Apply after validation or policy approval:
+
+```bash
+hermes-local-memory --db memory.sqlite apply-peer-review-patch /tmp/peer-review-patch.json \
+  --apply \
+  --json
+```
+
+Peer review mutates aliases only. It does not rewrite raw messages or delete peer rows. Human prompts are returned in the result for the calling agent/scheduler to deliver through its normal user-interaction channel.
 
 ### Consolidate facts and cards
 

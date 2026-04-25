@@ -462,6 +462,69 @@ def test_cli_card_review_packet_and_apply_card_patch(tmp_path: Path, capsys) -> 
     ]
 
 
+def test_cli_peer_review_packet_and_apply_peer_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
+    db_path = tmp_path / "memory.sqlite"
+    store = seed_store(db_path)
+    store.upsert_peer("telegram-1002", display_name="Telegram 1002", kind="human")
+    store.set_alias("telegram:1002", peer_id="telegram-1002", source="telegram")
+
+    packet_output = run_cli(
+        ["--db", str(db_path), "peer-review-packet", "--json"],
+        capsys,
+    )
+    packet = json.loads(packet_output)
+    assert packet["schema"] == "hermes-local-memory.peer-review-packet.v1"
+    assert any(peer["id"] == "telegram-1002" for peer in packet["unverified_peers"])
+
+    patch_path = tmp_path / "peer-patch.json"
+    patch_path.write_text(
+        json.dumps(
+            {
+                "schema": "hermes-local-memory.peer-review-patch.v1",
+                "alias_moves": [
+                    {
+                        "alias": "telegram:1002",
+                        "to_peer_id": "simone",
+                        "source": "agent-peer-review",
+                        "confidence": 0.9,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dry_run_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-peer-review-patch",
+            str(patch_path),
+            "--dry-run",
+            "--json",
+        ],
+        capsys,
+    )
+    dry_run = json.loads(dry_run_output)
+    assert dry_run["validation"]["valid"] is True
+    assert store.resolve_peer("telegram:1002")["id"] == "telegram-1002"
+
+    apply_output = run_cli(
+        [
+            "--db",
+            str(db_path),
+            "apply-peer-review-patch",
+            str(patch_path),
+            "--apply",
+            "--json",
+        ],
+        capsys,
+    )
+    applied = json.loads(apply_output)
+    assert applied["writes"] == {"aliases_moved": 1, "human_prompts_recorded": 0}
+    assert store.resolve_peer("telegram:1002")["id"] == "simone"
+
+
 def test_cli_reflection_maintenance_and_apply_reflection_patch(tmp_path: Path, capsys) -> None:  # noqa: ANN001
     db_path = tmp_path / "memory.sqlite"
     seed_store(db_path)

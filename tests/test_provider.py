@@ -47,6 +47,7 @@ def test_provider_exposes_memory_tools_and_can_write_profile_card(tmp_path: Path
         "memory_conclude",
         "memory_consolidate",
         "memory_maintenance",
+        "memory_peer_review",
         "memory_reflection_maintenance",
     }
 
@@ -147,6 +148,19 @@ def test_provider_consolidate_previews_and_applies_candidate_promotion(tmp_path:
         subject_peer_id=provider.user_peer_id,
         observer_peer_id=provider.assistant_peer_id,
     )
+
+
+def test_provider_exposes_peer_review_tool(tmp_path: Path) -> None:
+    provider = make_provider(tmp_path)
+    store = provider.store
+    assert store is not None
+    store.upsert_peer("telegram-1002", display_name="Telegram 1002", kind="human")
+    store.set_alias("telegram:1002", peer_id="telegram-1002", source="telegram")
+
+    result = parse_tool_result(provider.handle_tool_call("memory_peer_review", {}))
+
+    assert result["packet"]["schema"] == "hermes-local-memory.peer-review-packet.v1"
+    assert any(peer["id"] == "telegram-1002" for peer in result["packet"]["unverified_peers"])
 
 
 def test_provider_exposes_all_pairs_and_reflection_maintenance_tools(tmp_path: Path) -> None:

@@ -1,12 +1,12 @@
 # Hermes Local Memory
 
-**Local-first, inspectable, agent-integrated memory for Hermes Agent.**
+**Local-first, inspectable, agent-controlled memory for Hermes Agent.**
 
 Hermes Local Memory is an open-source SQLite memory provider for [Hermes Agent](https://github.com/NousResearch/hermes-agent). It is built for people who want the useful parts of agent memory — profiles, aliases, raw history, facts, cards, search, context injection, migration, and consolidation — without running a separate memory server or trusting an opaque background "dream" system.
 
 The core idea is simple:
 
-> Memory should be a local, auditable substrate that the agent can inspect, reason over, and update through explicit tools — not an opaque appendix bolted onto the side of the agent.
+> Memory should be a first-class part of the Hermes Agent runtime: a local, auditable substrate that the agent can inspect, reason over, maintain, and update through explicit tools — not an opaque appendix bolted onto the side of the agent.
 
 This project is inspired by the good ideas in Honcho, especially peers/cards/consolidation, but deliberately chooses boring engineering: one local SQLite DB, explicit identity mapping, deterministic retrieval, source-labeled context, dry-runs before writes, and agent-generated patches instead of hidden backend mutation.
 
@@ -22,9 +22,11 @@ Hermes Local Memory is opinionated in the other direction:
 
 - **Local-first** — default storage is `~/.hermes/memory/local_memory.sqlite`.
 - **No memory server** — no FastAPI, Docker, Redis, Postgres, or daemon required.
-- **Agent-integrated** — Hermes accesses memory through normal tools like `memory_context`, `memory_search`, `memory_conclude`, and `memory_consolidate`.
+- **Agent-controlled** — Hermes is expected to inspect, curate, and maintain memory through normal tools like `memory_context`, `memory_search`, `memory_conclude`, and `memory_consolidate`.
+- **Memory is first-class** — context, peers, aliases, cards, facts, summaries, and maintenance packets are part of the agent workflow, not a passive appendix.
 - **Inspectable by design** — humans and agents can list peers, aliases, sessions, cards, messages, facts, and rendered context.
 - **Identity is data** — aliases like `telegram:1001`, `honcho:Alice`, and `user` point to canonical peers such as `alice`.
+- **Peers are agent-maintained** — scheduled peer review lets the agent map new platform identities to canonical peers or escalate ambiguous identities for human help.
 - **Raw history is preserved** — imports copy raw messages; identity repair does not rewrite historical rows unless an explicit tool says so.
 - **Consolidation is explicit** — deterministic dry-runs produce plans; future agent-assisted consolidation should produce validated patches.
 - **Migration-safe** — Honcho import is additive/idempotent, supports identity maps, and never mutates Honcho.
@@ -46,6 +48,7 @@ Hermes Local Memory is opinionated in the other direction:
 | `memory_conclude` | Add durable facts with evidence links to the most recent synced user turn. |
 | `memory_consolidate` | Preview/apply deterministic card/fact consolidation for one peer. |
 | `memory_maintenance` | Preview/apply deterministic consolidation across all subject/observer pairs. |
+| `memory_peer_review` | Build peer review packets so the agent can maintain aliases and escalate ambiguous identities. |
 | `memory_reflection_maintenance` | Build reflection packets for stale sessions before consolidation. |
 
 ### CLI capabilities
@@ -62,6 +65,8 @@ Hermes Local Memory is opinionated in the other direction:
 - validated reflection patch dry-run/apply for candidate facts and session summaries
 - candidate review packets for safe imported fact promotion
 - validated candidate review patch dry-run/apply
+- peer review packets for agent-controlled identity maintenance
+- validated peer review patch dry-run/apply
 - deterministic consolidation dry-run/apply
 - consolidation packets for Hermes Agent review
 - all-pairs maintenance dry-run/apply
@@ -329,13 +334,19 @@ See [CLI docs](docs/cli.md) for full importer and migration-review behavior.
 
 ## How the memory flow works
 
-Local Memory separates **raw history**, **reflection**, **durable facts**, **compact cards**, and **agent decisions**.
+Local Memory separates **raw history**, **peers**, **reflection**, **durable facts**, **compact cards**, and **agent decisions**. The agent is not merely reading a memory appendix; it is responsible for operating this memory substrate through explicit tools and auditable maintenance jobs.
 
 ```text
 Normal conversation turn
   -> Hermes injects a compact source-labeled context block
   -> user/assistant messages are stored immutably as raw history
   -> explicit facts can be added immediately with evidence
+
+Scheduled peer review
+  -> new or unverified platform identities become peer review packets
+  -> Hermes Agent maps obvious aliases to canonical peers
+  -> ambiguous identities are escalated as human prompts instead of guessed
+  -> Local Memory validates and applies explicit alias moves
 
 Scheduled reflection / distillation
   -> stale raw-message windows become reflection packets
@@ -355,8 +366,9 @@ Next prompt injection
 The important split is:
 
 - **Local Memory** stores, retrieves, validates, and applies auditable changes.
-- **Hermes Agent** reasons about ambiguous memory quality decisions.
-- **Hermes cron/scheduler** runs recurring reflection before consolidation.
+- **Hermes Agent** owns memory decisions: peer mapping, candidate promotion, card cleanup, reflection review, and consolidation choices.
+- **Humans** are asked only when the agent cannot safely infer a peer or when policy requires approval.
+- **Hermes cron/scheduler** runs recurring peer review, reflection, and consolidation.
 
 The profile/card is **not** the only thing injected. Context Builder v2 composes ordinary prompt context from:
 
@@ -495,7 +507,7 @@ The memory package should not own model calls. Hermes should.
 
 ---
 
-## Scheduled reflection and consolidation with Hermes cron
+## Scheduled peer review, reflection, and consolidation with Hermes cron
 
 Regular memory maintenance is a first-class use case. The recommended path is to let Hermes schedule an autonomous job that has enough context, clear constraints, and permission boundaries to make routine memory-quality decisions itself.
 
@@ -504,16 +516,18 @@ The package should stay simple and local; Hermes should own scheduling, model ca
 Recommended autonomous cadence:
 
 - run nightly for most users, or every 6 hours for high-volume agents
-- first run **reflection/distillation** over stale sessions so ordinary conversation can become candidate facts and summaries
+- first run **peer review** so new platform identities can be mapped before downstream reflection/consolidation
+- then run **reflection/distillation** over stale sessions so ordinary conversation can become candidate facts and summaries
 - then run **all-pairs consolidation** across every subject/observer pair with cards or facts
 - inspect each pair's current card, active facts, candidate facts, aliases, summaries, and rendered context
 - apply narrow, validated changes when the plan is clearly safe
 - deliver a concise report of reflected sessions, changed pairs, skipped pairs, and escalations
 - escalate individual sessions/pairs when plans are large, noisy, ambiguous, identity-confused, or would rewrite cards heavily
 
-Reflection should generally run before consolidation:
+Peer review should generally run before reflection and consolidation:
 
 ```text
+new platform identities -> peer review packets -> alias moves or human prompts
 raw messages -> reflection packets -> candidate facts + session summaries
 candidate facts + active facts + cards -> consolidation -> compact cards
 compact cards + durable facts + summaries + retrieval -> prompt injection
@@ -522,34 +536,41 @@ compact cards + durable facts + summaries + retrieval -> prompt injection
 Example Hermes cron prompt:
 
 ```text
-Run a Hermes Local Memory reflection + consolidation job.
+Run a Hermes Local Memory peer review + reflection + consolidation job.
 Repository: /path/to/hermes-local-memory
 Database: ~/.hermes/memory/local_memory.sqlite
 
 Use Local Memory as the auditable substrate and use Hermes reasoning for judgment.
 Never modify raw messages. Never switch the live Hermes provider config.
 
-Phase 1: Reflection / distillation
-- Run reflection-maintenance for stale sessions first.
+Phase 1: Peer review / identity maintenance
+- Run peer-review-packet first.
+- If a new platform peer clearly maps to an existing canonical peer, produce a peer-review patch that moves only the alias.
+- If identity is ambiguous, produce a human prompt with the concrete peer id, aliases, and question instead of guessing.
+- Validate each peer-review patch with apply-peer-review-patch --dry-run before applying.
+- Do not delete peer rows or rewrite raw message history.
+
+Phase 2: Reflection / distillation
+- Run reflection-maintenance for stale sessions after peer review.
 - Review each reflection packet and create reflection patches only for facts clearly supported by packet message IDs.
 - New memories from reflection must be candidate facts, not active facts.
 - Add session summaries only for the exact message windows reviewed.
 - Validate each reflection patch with apply-reflection-patch --dry-run before applying.
 - Skip sessions that are noisy, identity-confused, too large, or ambiguous.
 
-Phase 2: Consolidation / all-pairs maintenance
+Phase 3: Consolidation / all-pairs maintenance
 - Run all-pairs maintenance with --dry-run.
 - Inspect all subject/observer pairs with cards or facts.
 - Apply only narrow, coherent, non-duplicative changes clearly supported by facts/cards/summaries and compatible with that pair's identity.
 - Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
 
-Report exactly: reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
+Report exactly: peer aliases moved, human identity prompts, reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
 ```
 
 A more prudent/report-only variant is also useful for new deployments or risky imports:
 
 ```text
-Run the same reflection + all-pairs consolidation job, but do not apply changes. Produce only a dry-run report with stale session counts, proposed candidate facts/summaries, pair counts, top card additions, top promotions/supersedes, skipped items, and recommendations.
+Run the same peer review + reflection + all-pairs consolidation job, but do not apply changes. Produce only a dry-run report with unresolved peer counts, proposed alias moves, human identity questions, stale session counts, proposed candidate facts/summaries, pair counts, top card additions, top promotions/supersedes, skipped items, and recommendations.
 ```
 
 This gives both modes:
@@ -575,6 +596,7 @@ To schedule this from Hermes, create a recurring Hermes cron job with a self-con
 src/hermes_local_memory/
   cli.py             CLI for inspection, repair, import, consolidation, shim install
   consolidation.py   Deterministic consolidation planner/apply logic
+  peer_review.py     Agent peer/alias review packet and patch logic
   hermes_plugin.py   Hermes user-plugin shim renderer
   honcho_api.py      stdlib Honcho HTTP API exporter
   honcho_import.py   Honcho import planner/apply logic + identity maps
