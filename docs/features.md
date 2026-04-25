@@ -137,16 +137,27 @@ This does not change `memory.provider` and therefore does not replace the active
 
 ### Honcho importer
 
-The importer should preserve raw history and migrate useful derived artifacts:
+The importer has an initial dry-run planner:
+
+```bash
+hermes-local-memory --db memory.sqlite import honcho \
+  --source-db honcho-export.sqlite \
+  --workspace hermes \
+  --dry-run \
+  --json
+```
+
+Current dry-run planning supports Honcho-shaped SQLite exports/fixtures and reports proposed:
 
 - peers
-- aliases
+- `honcho:<peer>` aliases
 - sessions
-- messages
-- peer cards
-- documents/conclusions as facts or candidates
+- session peer links
+- raw messages
+- peer cards from `peers.internal_metadata`
+- documents/conclusions as `candidate` facts
 
-It should support dry-run mode before any writes.
+The dry-run planner does not write the target DB. Apply mode, direct Postgres ingestion, identity map files, and richer collision detection remain planned.
 
 ### Consolidation
 

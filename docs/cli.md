@@ -4,7 +4,7 @@
 
 ## Safety model
 
-The inspection commands in this document are read-only:
+The inspection and planning commands in this document are read-only:
 
 - `peers`
 - `aliases`
@@ -14,6 +14,7 @@ The inspection commands in this document are read-only:
 - `facts`
 - `search`
 - `context`
+- `import honcho --dry-run`
 
 They do not mutate the database. They are intended for humans and agents to verify identity mappings, durable facts, and context injection before enabling or migrating a live memory provider.
 
@@ -143,6 +144,28 @@ hermes-local-memory --db memory.sqlite context \
 ```
 
 This renders the same source-labeled context shape used by provider `prefetch()`.
+
+### Plan a Honcho import
+
+```bash
+hermes-local-memory --db memory.sqlite import honcho \
+  --source-db honcho-export.sqlite \
+  --workspace hermes \
+  --dry-run \
+  --json
+```
+
+The current Honcho importer is dry-run only. It reads a SQLite export or fixture containing Honcho-shaped tables and returns a plan with:
+
+- proposed peers
+- proposed `honcho:<peer>` aliases
+- proposed sessions and session peer links
+- raw messages with `source_message_id=honcho:<id>`
+- peer cards from `peers.internal_metadata`
+- Honcho documents as `candidate` facts
+- counts and warnings
+
+It does not create or modify the target Local Memory database. `--dry-run` is currently required.
 
 ## Repair commands
 

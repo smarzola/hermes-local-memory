@@ -93,6 +93,8 @@ src/hermes_local_memory/
   provider.py       Hermes-compatible provider lifecycle and tools
   store.py          SQLite store and deterministic retrieval core
   schema.py         SQLite schema
+  honcho_import.py  Read-only Honcho import planner
+  cli.py            Inspection, repair, and import-planning CLI
   __init__.py       Public exports
 ```
 
@@ -346,12 +348,21 @@ Repair commands are now explicit and auditable for alias mapping, fact add/retra
 
 ### Milestone 4: Honcho importer
 
-Planned:
+Partially done:
 
-- dry-run/apply import from Honcho Postgres or exported JSON
+- dry-run planner from Honcho-shaped SQLite exports/fixtures
+- proposed peer/session/message/card/fact counts
+- `honcho:<peer>` alias planning
+- raw-message preservation plan with source IDs and metadata
+- peer-card planning from `peers.internal_metadata`
+- Honcho documents planned as `candidate` facts
+
+Still planned:
+
+- apply mode
+- direct Postgres ingestion
 - identity map file support
-- raw-history preservation
-- card/document import
+- richer collision detection and warnings
 
 ### Milestone 5: Consolidation
 

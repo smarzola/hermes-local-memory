@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from hermes_local_memory.hermes_plugin import write_plugin_shim
+from hermes_local_memory.honcho_import import plan_honcho_import
 from hermes_local_memory.store import LocalMemoryStore
 
 
@@ -103,6 +104,26 @@ def build_parser() -> argparse.ArgumentParser:
     card_replace.add_argument("--observer", required=True, help="Observer peer id or alias")
     card_replace.add_argument("--from-file", required=True, help="Path to JSON list of strings")
     card_replace.add_argument("--json", action="store_true")
+
+    import_cmd = sub.add_parser("import", help="Plan or apply imports from other memory systems")
+    import_sub = import_cmd.add_subparsers(dest="import_command", required=True)
+    honcho = import_sub.add_parser("honcho", help="Plan a safe Honcho import")
+    honcho.add_argument(
+        "--source-db",
+        required=True,
+        help="SQLite export or fixture with Honcho tables",
+    )
+    honcho.add_argument(
+        "--workspace",
+        default="hermes",
+        help="Honcho workspace name, default: hermes",
+    )
+    honcho.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Required for now; do not write anything",
+    )
+    honcho.add_argument("--json", action="store_true", help="Print JSON")
     return parser
 
 
@@ -122,6 +143,17 @@ def main(argv: list[str] | None = None) -> int:
         plugin_dir = Path(args.hermes_home).expanduser() / "plugins" / "local_memory"
         shim = write_plugin_shim(plugin_dir, package_root=args.package_root)
         print(shim)
+        return 0
+
+    if args.command == "import" and args.import_command == "honcho":
+        if not args.dry_run:
+            raise ValueError("Honcho import currently supports --dry-run only")
+        plan = plan_honcho_import(
+            Path(args.source_db).expanduser(),
+            target_db=Path(args.db).expanduser(),
+            workspace=args.workspace,
+        )
+        _print_plan(plan, as_json=args.json)
         return 0
 
     store = LocalMemoryStore(Path(args.db).expanduser())
@@ -234,6 +266,24 @@ def _read_card_items(path: Path) -> list[str]:
     if not isinstance(data, list) or not all(isinstance(item, str) for item in data):
         raise ValueError("card file must contain a JSON list of strings")
     return data
+
+
+def _print_plan(plan: dict[str, Any], *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        return
+    print(
+        f"mode={plan['mode']} | "
+        f"source={plan['source']['db_path']} | "
+        f"target={plan['target']['db_path']}"
+    )
+    print("counts:")
+    for key, value in plan["counts"].items():
+        print(f"  {key}: {value}")
+    if plan["warnings"]:
+        print("warnings:")
+        for warning in plan["warnings"]:
+            print(f"  - {warning}")
 
 
 def _print_one(row: dict[str, Any], *, as_json: bool) -> None:
