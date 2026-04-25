@@ -65,3 +65,7 @@ include = [
   "/docs",
   "/skills",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hermes_local_memory"]
+force-include = { "skills" = "skills", "docs" = "docs", "CHANGELOG.md" = "CHANGELOG.md" }
