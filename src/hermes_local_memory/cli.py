@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from hermes_local_memory import __version__
 from hermes_local_memory.candidate_review import (
     apply_candidate_review_patch,
     build_candidate_review_packet,
@@ -65,6 +68,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(Path(__file__).resolve().parents[1]),
         help="Package src root to add to the shim sys.path",
     )
+    install.add_argument(
+        "--no-sync-skills",
+        action="store_true",
+        help="Do not install/update packaged Hermes skills while installing the shim",
+    )
+    install.add_argument("--json", action="store_true", help="Print JSON")
+
+    sync_skills = sub.add_parser(
+        "sync-skills",
+        help="Install or update Hermes skills packaged with hermes-local-memory",
+    )
+    sync_skills.add_argument(
+        "--hermes-home",
+        default=str(Path.home() / ".hermes"),
+        help="Hermes home directory, default: ~/.hermes",
+    )
+    sync_skills.add_argument("--json", action="store_true", help="Print JSON")
 
     _add_readonly_table_command(sub, "peers", "List peers")
     _add_readonly_table_command(sub, "aliases", "List peer aliases")
@@ -385,12 +405,82 @@ def _add_readonly_table_command(
     return command
 
 
+def _packaged_skill_dir() -> Path:
+    package_file = Path(__file__).resolve()
+    candidates = [
+        # Development checkout: <repo>/src/hermes_local_memory/cli.py -> <repo>/skills/...
+        package_file.parents[2] / "skills" / "local-memory-maintenance",
+        # Installed wheel: <site-packages>/hermes_local_memory/cli.py -> <site-packages>/skills/...
+        package_file.parents[1] / "skills" / "local-memory-maintenance",
+    ]
+    for candidate in candidates:
+        if (candidate / "SKILL.md").is_file():
+            return candidate
+    return candidates[0]
+
+
+def _sync_packaged_skills(hermes_home: str | Path) -> dict[str, Any]:
+    source_dir = _packaged_skill_dir()
+    source_skill = source_dir / "SKILL.md"
+    if not source_skill.is_file():
+        raise FileNotFoundError(f"packaged skill not found: {source_skill}")
+
+    target_dir = Path(hermes_home).expanduser() / "skills" / "local-memory-maintenance"
+    target_skill = target_dir / "SKILL.md"
+    source_content = source_skill.read_text(encoding="utf-8")
+    old_content = target_skill.read_text(encoding="utf-8") if target_skill.exists() else None
+    changed = old_content != source_content
+    removed_existing = False
+
+    if changed and target_dir.exists():
+        shutil.rmtree(target_dir)
+        removed_existing = True
+
+    if changed:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+
+    provenance = {
+        "package": "hermes-local-memory",
+        "skill": "local-memory-maintenance",
+        "version": __version__,
+        "source": str(source_dir),
+        "target": str(target_skill),
+        "synced_at": datetime.now(UTC).isoformat(),
+    }
+    if changed or not (target_dir / ".hermes-local-memory-source.json").exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / ".hermes-local-memory-source.json").write_text(
+            json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    return {
+        "skill": "local-memory-maintenance",
+        "source": str(source_skill),
+        "target": str(target_skill),
+        "changed": changed,
+        "removed_existing": removed_existing,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "install-shim":
         plugin_dir = Path(args.hermes_home).expanduser() / "plugins" / "local_memory"
         shim = write_plugin_shim(plugin_dir, package_root=args.package_root)
-        print(shim)
+        skill_sync = None if args.no_sync_skills else _sync_packaged_skills(args.hermes_home)
+        if args.json:
+            _print_one({"shim": str(shim), "skill_sync": skill_sync}, as_json=True)
+        else:
+            print(shim)
+            if skill_sync is not None:
+                print(skill_sync["target"])
+        return 0
+
+    if args.command == "sync-skills":
+        result = _sync_packaged_skills(args.hermes_home)
+        _print_one(result, as_json=args.json)
         return 0
 
     if args.command == "import" and args.import_command == "honcho-api":

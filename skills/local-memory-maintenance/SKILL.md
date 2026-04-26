@@ -13,6 +13,8 @@ metadata:
 
 Use this skill when maintaining a Hermes Local Memory SQLite database from inside Hermes Agent or an autonomous cron job.
 
+All flow details live in this skill. Cron prompts should load this skill and provide only deployment-specific parameters such as database path, runtime identity, cadence, and whether to apply or report-only. Do not duplicate the full maintenance flow in cron prompts; update this packaged skill instead.
+
 This skill is intentionally provider-tool-first. Use CLI commands only for non-memory-tool tasks such as creating timestamped file backups, release checks, or deep offline inspection.
 
 ## Non-negotiable safety rules
@@ -139,17 +141,22 @@ Report these sections concisely:
 
 ## Cron prompt skeleton
 
+Install or update the packaged skill at setup/update time with:
+
+```bash
+hermes-local-memory sync-skills --hermes-home ~/.hermes
+```
+
+Then attach/load the installed `local-memory-maintenance` skill on the Hermes cron job. Keep the cron prompt short; all flow details live in this skill.
+
 ```text
-Load the local-memory-maintenance skill and run a full Hermes Local Memory maintenance cycle.
+Use the loaded local-memory-maintenance skill to run Hermes Local Memory maintenance.
 
-Repository: /path/to/hermes-local-memory
 Database: ~/.hermes/memory/local_memory.sqlite
+Mode: apply bounded, policy-safe changes after dry-run validation; skip/escalate ambiguous or large plans.
+Runtime identity: use the current Hermes memory tool context. If provider tools are unavailable, instantiate LocalMemoryProvider from the installed hermes-local-memory package with the target database and realistic platform/user/agent identity.
 
-Use provider tools first. Do not directly edit the SQLite DB except to create a timestamped backup copy before apply. Never mutate raw messages. Prefer dry-run/validate before apply for every patch. Apply only bounded, policy-safe changes; skip and report ambiguous, noisy, identity-confused, or large plans.
-
-Run: backup -> memory_build_peer_review_packet -> memory_apply_peer_review_patch dry-run/apply for obvious alias_moves or peer_merges with keep_source_alias=true -> memory_build_reflection_packets -> memory_apply_reflection_patch dry-run/apply for evidence-grounded reflection patches -> memory_maintenance dry-run/apply for bounded deterministic changes -> memory_build_honcho_migration_review_packet / memory_apply_honcho_migration_review_patch for first-migration Honcho memories when present -> memory_build_candidate_review_packet / memory_apply_candidate_review_patch for selected remaining candidates -> memory_build_card_review_packet / memory_apply_card_review_patch for card cleanup -> verify with memory_get_card, memory_context, memory_search, and a final dry-run memory_maintenance.
-
-Deliver a concise report with applied, skipped, escalated, and verification sections.
+Follow the skill's full maintenance cycle and report format. Do not duplicate the flow here. Never mutate raw messages. Never switch the live Hermes provider config.
 ```
 
 ## Field lessons from cron runs

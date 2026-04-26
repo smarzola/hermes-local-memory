@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.2.2
+
+### Added
+
+- Added `hermes-local-memory sync-skills` to install/update the packaged `local-memory-maintenance` skill into a Hermes home directory without modifying Hermes Agent.
+- Made `install-shim` sync packaged skills by default, with `--no-sync-skills` available for shim-only installs.
+- Added provenance metadata when replacing an existing installed maintenance skill. Existing skill directories are removed before sync so stale copies/backups are not picked up as extra Hermes skills.
+
+### Changed
+
+- Shortened the recommended cron prompt so deployment-specific cron jobs load the packaged skill and avoid duplicating the full maintenance flow.
+
 ## v0.2.1
 
 ### Added

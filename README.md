@@ -628,40 +628,22 @@ card-review / consolidation patches -> compact card synthesis when needed
 compact cards + durable facts + summaries + retrieval -> prompt injection
 ```
 
-Example Hermes cron prompt:
+Before creating or updating the cron job, install/update the packaged maintenance skill into Hermes' skills directory:
+
+```bash
+hermes-local-memory sync-skills --hermes-home ~/.hermes
+```
+
+Attach/load `local-memory-maintenance` on the Hermes cron job. Keep the cron prompt short because the full flow lives in the skill and is updated by package upgrades:
 
 ```text
-Run a Hermes Local Memory peer review + reflection + consolidation job.
-Repository: /path/to/hermes-local-memory
+Use the loaded local-memory-maintenance skill to run Hermes Local Memory maintenance.
+
 Database: ~/.hermes/memory/local_memory.sqlite
+Mode: apply bounded, policy-safe changes after dry-run validation; skip/escalate ambiguous or large plans.
+Runtime identity: use the current Hermes memory tool context. If provider tools are unavailable, instantiate LocalMemoryProvider from the installed hermes-local-memory package with the target database and realistic platform/user/agent identity.
 
-Use Local Memory as the auditable substrate and use Hermes reasoning for judgment.
-Never modify raw messages. Never switch the live Hermes provider config.
-
-Phase 1: Peer review / identity maintenance
-- Call `memory_build_peer_review_packet` first.
-- If a new platform peer clearly maps to an existing canonical peer, produce a peer-review patch that moves only the alias.
-- If identity is ambiguous, produce a human prompt with the concrete peer id, aliases, and question instead of guessing.
-- Validate each peer-review patch with `memory_apply_peer_review_patch(apply=false)` before applying with `apply=true`.
-- Do not delete peer rows or rewrite raw message history.
-
-Phase 2: Reflection / distillation
-- Call `memory_build_reflection_packets` for stale sessions after peer review.
-- Review each reflection packet and create reflection patches only for facts clearly supported by packet message IDs.
-- New memories from reflection must be candidate facts, not active facts.
-- Add session summaries only for the exact message windows reviewed.
-- Validate each reflection patch with `memory_apply_reflection_patch(apply=false)` before applying with `apply=true`.
-- Skip sessions that are noisy, identity-confused, too large, or ambiguous.
-
-Phase 3: Conservative all-pairs maintenance
-- Call `memory_maintenance(promote_candidates=true, apply=false)` for an all-pairs dry run.
-- Inspect the compact summary of changed pairs.
-- Apply only bounded fact-lifecycle changes: duplicate supersedes and high-confidence local/reflection candidate promotions.
-- Do not treat active facts as automatic card additions; cards are compact synthesized views.
-- If a card needs cleanup, call `memory_build_card_review_packet` and apply a validated full-card replacement with `memory_apply_card_review_patch`.
-- Skip pairs whose plan is noisy, large, ambiguous, identity-confused, or mostly imported meta-facts.
-
-Report exactly: peer aliases moved, human identity prompts, reflected sessions, candidate facts added, summaries added, pairs changed, pairs skipped, pairs escalated, and why.
+Follow the skill's full maintenance cycle and report format. Do not duplicate the flow here. Never mutate raw messages. Never switch the live Hermes provider config.
 ```
 
 A more prudent/report-only variant is also useful for new deployments or risky imports:
@@ -675,7 +657,7 @@ This gives both modes:
 - **autonomous by default** for well-scoped, well-validated maintenance
 - **report-only** when a human wants extra caution
 
-To schedule this from Hermes, install/attach/load the packaged `local-memory-maintenance` skill from `skills/local-memory-maintenance/SKILL.md` and create a recurring Hermes cron job with a self-contained version of the prompt above. If the package was installed from PyPI, copy or register that packaged skill in the target Hermes skills directory before creating the cron job. Recommended starting schedule: nightly. High-volume deployments can move to every 6 hours after the dry-run reports look clean.
+To schedule this from Hermes, run `hermes-local-memory sync-skills --hermes-home ~/.hermes` after install or update, attach/load the installed `local-memory-maintenance` skill on the recurring Hermes cron job, and keep the job prompt deployment-specific rather than duplicating the maintenance flow. Recommended starting schedule: nightly. High-volume deployments can move to every 6 hours after the dry-run reports look clean.
 
 ## Documentation
 
