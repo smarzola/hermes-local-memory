@@ -34,6 +34,14 @@ def test_publish_workflow_builds_artifacts_before_publishing() -> None:
     assert "pypa/gh-action-pypi-publish@release/v1" in workflow
 
 
+def test_publish_workflow_creates_github_release_from_ci() -> None:
+    workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
+
+    assert "contents: write" in workflow
+    assert "softprops/action-gh-release" in workflow
+    assert "files: dist/*" in workflow
+
+
 def test_publish_workflow_uses_pypi_environment_for_trusted_publishing() -> None:
     workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
 

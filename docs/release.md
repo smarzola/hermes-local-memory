@@ -89,49 +89,43 @@ test -f "$TMP_HOME/plugins/local_memory/__init__.py"
 rm -rf "$TMP_HOME"
 ```
 
-## GitHub release
+## GitHub release and PyPI publish
+
+Release creation and PyPI publication are handled by GitHub Actions, not by a developer machine.
+The `Publish to PyPI` workflow runs only for pushed tags matching `v*`, builds the artifacts,
+runs `twine check`, creates the GitHub release with those artifacts attached, and publishes the
+exact tagged source to PyPI using Trusted Publishing / OIDC.
+
+Do **not** run local `twine upload`, and do **not** create the GitHub release manually with local
+artifacts. Local builds are only preflight/smoke checks.
+
+Before pushing a release tag:
+
+1. Configure a PyPI Trusted Publisher for this repository and the
+   `.github/workflows/publish.yml` workflow.
+2. Confirm local pre-release checks pass.
+3. Push the version tag.
 
 Tag and push:
 
 ```bash
-VERSION=0.1.0
+VERSION=0.2.1
 git tag -a "v$VERSION" -m "v$VERSION"
 git push origin "v$VERSION"
 ```
 
-Create a GitHub release:
-
-```bash
-gh release create "v$VERSION" dist/* \
-  --title "v$VERSION" \
-  --notes-file /tmp/hermes-local-memory-release-notes.md
-```
-
-Release notes should include:
+After pushing the tag, monitor the `Publish to PyPI` workflow. The workflow-generated GitHub
+release notes should include or be edited to include:
 
 - headline summary
 - install command
 - migration paths supported
 - safety notes: trial DB, dry-run first, raw history preserved
 - known limitations / pre-alpha caveats
-- maintenance safety notes when behavior changes candidate promotion, card synthesis, or scheduled jobs
+- maintenance safety notes when behavior changes candidate promotion, card synthesis, identity reconciliation, or scheduled jobs
 
-## PyPI publish
-
-PyPI publication is handled by GitHub Actions, not by a developer machine. The
-`Publish to PyPI` workflow runs only for pushed tags matching `v*` and uses PyPI
-Trusted Publishing / OIDC, so no PyPI token is stored in the repository and no
-local `twine upload` step is required.
-
-Before pushing a release tag:
-
-1. Configure a PyPI Trusted Publisher for this repository and the
-   `.github/workflows/publish.yml` workflow.
-2. Confirm the GitHub release artifacts and smoke install pass.
-3. Push the version tag.
-
-The workflow builds distributions, runs `twine check`, and publishes the exact
-tagged source to PyPI.
+The workflow publishes to PyPI and then creates the GitHub release from the same CI-built `dist/*`
+artifacts, so the release artifacts and published package come from the same tagged build.
 
 ## Post-release verification
 

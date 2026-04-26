@@ -67,6 +67,69 @@ def test_provider_reuses_existing_verified_alias_instead_of_overwriting_it(tmp_p
     assert provider.store.resolve_peer("telegram-1001") is None
 
 
+def test_provider_adopts_existing_sanitized_runtime_peer_when_alias_now_resolves_elsewhere(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "memory" / "local_memory.sqlite"
+    seeded = LocalMemoryProvider(db_path=db_path)
+    seeded.initialize(
+        "first-runtime-session",
+        hermes_home=str(tmp_path),
+        platform="telegram",
+        user_id="default",
+        agent_identity="bob",
+    )
+    assert seeded.store is not None
+    seeded.store.upsert_peer("alice", display_name="Alice", kind="human")
+    message = seeded.store.add_message(
+        session_id="first-runtime-session",
+        peer_id="telegram-default",
+        role="user",
+        content="runtime message before identity repair",
+    )
+    seeded.store.set_alias(
+        "telegram:default",
+        peer_id="alice",
+        source="migration",
+        verified=True,
+    )
+
+    provider = LocalMemoryProvider(db_path=db_path)
+    provider.initialize(
+        "second-runtime-session",
+        hermes_home=str(tmp_path),
+        platform="telegram",
+        user_id="default",
+        agent_identity="bob",
+    )
+
+    assert provider.user_peer_id == "alice"
+    assert provider.store.resolve_peer("telegram:default")["id"] == "alice"
+    assert provider.store.resolve_peer("telegram-default")["id"] == "alice"
+    with provider.store.connect() as conn:
+        retired_alias = conn.execute(
+            "select * from peer_aliases where alias = ?",
+            ("telegram-default",),
+        ).fetchone()
+        retired_peer = conn.execute(
+            "select * from peers where id = ?",
+            ("telegram-default",),
+        ).fetchone()
+        repaired_message = conn.execute(
+            "select peer_id from messages where id = ?",
+            (message["id"],),
+        ).fetchone()
+        repaired_session_peer = conn.execute(
+            "select peer_id from session_peers where session_id = ? and peer_id = ?",
+            ("first-runtime-session", "alice"),
+        ).fetchone()
+    assert retired_alias["peer_id"] == "alice"
+    assert retired_alias["verified"] == 1
+    assert retired_peer is None
+    assert repaired_message["peer_id"] == "alice"
+    assert repaired_session_peer["peer_id"] == "alice"
+
+
 def test_provider_reuses_existing_agent_identity_alias_instead_of_creating_default_peer(
     tmp_path: Path,
 ) -> None:

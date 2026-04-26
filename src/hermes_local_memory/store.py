@@ -114,6 +114,118 @@ class LocalMemoryStore:
             ).fetchone()
             return self._row_to_dict(row)
 
+    def merge_peer(
+        self,
+        source_peer_id: str,
+        target_peer_id: str,
+        *,
+        keep_source_alias: bool = False,
+        source: str = "peer-merge",
+    ) -> dict[str, Any]:
+        if source_peer_id == target_peer_id:
+            return {
+                "source_peer_id": source_peer_id,
+                "target_peer_id": target_peer_id,
+                "deleted": False,
+            }
+        with self.connect() as conn:
+            source_peer = conn.execute(
+                "select * from peers where id = ?",
+                (source_peer_id,),
+            ).fetchone()
+            target = conn.execute("select * from peers where id = ?", (target_peer_id,)).fetchone()
+            if source_peer is None:
+                return {
+                    "source_peer_id": source_peer_id,
+                    "target_peer_id": target_peer_id,
+                    "deleted": False,
+                }
+            if target is None:
+                raise ValueError(f"unknown target peer id: {target_peer_id}")
+            counts = {
+                "aliases": conn.execute(
+                    "select count(*) from peer_aliases where peer_id = ?",
+                    (source_peer_id,),
+                ).fetchone()[0],
+                "messages": conn.execute(
+                    "select count(*) from messages where peer_id = ?",
+                    (source_peer_id,),
+                ).fetchone()[0],
+                "session_peers": conn.execute(
+                    "select count(*) from session_peers where peer_id = ?",
+                    (source_peer_id,),
+                ).fetchone()[0],
+                "subject_facts": conn.execute(
+                    "select count(*) from facts where subject_peer_id = ?",
+                    (source_peer_id,),
+                ).fetchone()[0],
+                "observer_facts": conn.execute(
+                    "select count(*) from facts where observer_peer_id = ?",
+                    (source_peer_id,),
+                ).fetchone()[0],
+                "subject_cards": conn.execute(
+                    "select count(*) from cards where subject_peer_id = ?",
+                    (source_peer_id,),
+                ).fetchone()[0],
+                "observer_cards": conn.execute(
+                    "select count(*) from cards where observer_peer_id = ?",
+                    (source_peer_id,),
+                ).fetchone()[0],
+            }
+            conn.execute(
+                "update peer_aliases set peer_id = ? where peer_id = ?",
+                (target_peer_id, source_peer_id),
+            )
+            conn.execute(
+                "update messages set peer_id = ? where peer_id = ?",
+                (target_peer_id, source_peer_id),
+            )
+            for row in conn.execute(
+                "select session_id, role from session_peers where peer_id = ?",
+                (source_peer_id,),
+            ).fetchall():
+                conn.execute(
+                    """
+                    insert or ignore into session_peers(session_id, peer_id, role)
+                    values (?, ?, ?)
+                    """,
+                    (row["session_id"], target_peer_id, row["role"]),
+                )
+            conn.execute("delete from session_peers where peer_id = ?", (source_peer_id,))
+            conn.execute(
+                "update facts set subject_peer_id = ? where subject_peer_id = ?",
+                (target_peer_id, source_peer_id),
+            )
+            conn.execute(
+                "update facts set observer_peer_id = ? where observer_peer_id = ?",
+                (target_peer_id, source_peer_id),
+            )
+            conn.execute(
+                "delete from cards where subject_peer_id = ? or observer_peer_id = ?",
+                (source_peer_id, source_peer_id),
+            )
+            conn.execute("delete from peers where id = ?", (source_peer_id,))
+            if keep_source_alias:
+                conn.execute(
+                    """
+                    insert into peer_aliases(alias, peer_id, source, confidence, verified)
+                    values (?, ?, ?, ?, ?)
+                    on conflict(alias) do update set
+                      peer_id = excluded.peer_id,
+                      source = excluded.source,
+                      confidence = excluded.confidence,
+                      verified = excluded.verified
+                    """,
+                    (source_peer_id, target_peer_id, source, 1.0, 1),
+                )
+            return {
+                "source_peer_id": source_peer_id,
+                "target_peer_id": target_peer_id,
+                "deleted": True,
+                "source_alias_added": keep_source_alias,
+                "moved": counts,
+            }
+
     def upsert_session(
         self,
         session_id: str,

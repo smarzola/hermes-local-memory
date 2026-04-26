@@ -68,9 +68,11 @@ Legacy names may exist as hidden compatibility aliases, but agents should prefer
 
 2. **Peer review / identity**
    - Call `memory_build_peer_review_packet`.
-   - If an alias move is obvious and evidence-supported, produce a peer review patch.
+   - If an alias move is obvious and evidence-supported, produce a peer review patch with `alias_moves`.
+   - If a runtime/ephemeral peer is clearly the same identity as a canonical peer, produce a peer review patch with `peer_merges`, for example `from_peer_id`, `to_peer_id`, `keep_source_alias=true`, `verified=true`, and a short `reason`.
    - Validate first with `memory_apply_peer_review_patch(apply=false)`.
-   - Apply only narrow alias moves with `memory_apply_peer_review_patch(apply=true)`.
+   - Apply only narrow alias moves or peer merges with `memory_apply_peer_review_patch(apply=true)`.
+   - Preserve retired peer IDs as aliases with `keep_source_alias=true` so future lookup and reconciliation remain auditable.
    - Escalate ambiguous identities with concrete peer IDs and aliases.
 
 3. **Reflection / distillation**
@@ -145,7 +147,18 @@ Database: ~/.hermes/memory/local_memory.sqlite
 
 Use provider tools first. Do not directly edit the SQLite DB except to create a timestamped backup copy before apply. Never mutate raw messages. Prefer dry-run/validate before apply for every patch. Apply only bounded, policy-safe changes; skip and report ambiguous, noisy, identity-confused, or large plans.
 
-Run: backup -> memory_build_peer_review_packet -> memory_apply_peer_review_patch dry-run/apply for obvious alias moves -> memory_build_reflection_packets -> memory_apply_reflection_patch dry-run/apply for evidence-grounded reflection patches -> memory_maintenance dry-run/apply for bounded deterministic changes -> memory_build_honcho_migration_review_packet / memory_apply_honcho_migration_review_patch for first-migration Honcho memories when present -> memory_build_candidate_review_packet / memory_apply_candidate_review_patch for selected remaining candidates -> memory_build_card_review_packet / memory_apply_card_review_patch for card cleanup -> verify with memory_get_card, memory_context, memory_search, and a final dry-run memory_maintenance.
+Run: backup -> memory_build_peer_review_packet -> memory_apply_peer_review_patch dry-run/apply for obvious alias_moves or peer_merges with keep_source_alias=true -> memory_build_reflection_packets -> memory_apply_reflection_patch dry-run/apply for evidence-grounded reflection patches -> memory_maintenance dry-run/apply for bounded deterministic changes -> memory_build_honcho_migration_review_packet / memory_apply_honcho_migration_review_patch for first-migration Honcho memories when present -> memory_build_candidate_review_packet / memory_apply_candidate_review_patch for selected remaining candidates -> memory_build_card_review_packet / memory_apply_card_review_patch for card cleanup -> verify with memory_get_card, memory_context, memory_search, and a final dry-run memory_maintenance.
 
 Deliver a concise report with applied, skipped, escalated, and verification sections.
 ```
+
+## Field lessons from cron runs
+
+- If the live Hermes session does not expose the canonical memory tools for the target database/identity, preserve the provider-tool-first contract by instantiating `LocalMemoryProvider` from the checkout/package and calling `handle_tool_call(...)` with canonical tool names. Use terminal/Python only as the wrapper to reach the provider; do not edit SQLite rows directly.
+- Initialize the provider with the target database and realistic runtime identity so alias resolution matches live use, for example `LocalMemoryProvider(Path.home()/'.hermes/memory/local_memory.sqlite')` plus `initialize(..., platform='telegram', user_id='151011988', agent_identity='Ambrogio')` in Simone's local setup. This ensures `user` resolves to `simone` and `ai` resolves to `ambrogio` before verification.
+- Peer review packets may list many unverified `honcho:*` aliases that are already attached to the intended canonical peers. Do not move aliases just to mark them verified. Apply `alias_moves` only when a source alias clearly points at the wrong peer. Apply `peer_merges` only when a runtime/ephemeral peer is clearly the same identity as a canonical peer; set `keep_source_alias=true` so names such as `telegram-default` continue resolving after the stale peer row is removed. Use `human_prompts` when the safe action is unclear.
+- Reflection packets can mix durable preferences with stale operational, task-local, or sensitive imported history. Apply reflection patches only for windows with clear evidence IDs and stable memories; skip old mixed Honcho windows rather than forcing a summary/fact extraction. After applying reflection summaries, rerun `memory_build_reflection_packets` to confirm only intentionally skipped windows remain.
+- Deterministic maintenance after reflection may be safe when proposed promotions are all high-confidence local/`agent-reflection` candidates and counts are small. It remains unsafe for broad imported-Honcho promotion. Record the exact dry-run counts before apply.
+- Candidate review is useful for narrow cleanup of noisy imported Honcho facts. Retraction is appropriate for obvious task-local or ephemeral candidates (for example one-off light-control commands or “should this be saved?” meta-candidates); do not promote imported candidates in bulk.
+- Deterministic maintenance may append newly promoted safe candidate lines verbatim to cards. Follow with card review when this makes a card too verbose or task-specific, and replace the whole card with a compact synthesized version rather than dumping every active fact into it.
+- Final verification should include `memory_get_card`, `memory_context`, `memory_search`, and a final `memory_maintenance(promote_candidates=true, apply=false, limit=...)`. A clean final dry-run should report zero unexpected promotions/supersedes/card additions; any remaining reflection packet should be explicitly reported as skipped/escalated.

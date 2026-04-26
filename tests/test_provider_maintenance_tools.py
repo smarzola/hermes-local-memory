@@ -39,6 +39,63 @@ def test_provider_exposes_patch_validation_tools_for_full_agent_maintenance_cycl
     assert "memory_apply_card_review_patch" in tool_names
 
 
+def test_provider_can_apply_peer_merge_from_agent_peer_review_tool(tmp_path: Path) -> None:
+    provider = make_provider(tmp_path)
+    assert provider.store is not None
+    provider.store.upsert_peer("telegram-default", display_name="default", kind="human")
+    message = provider.store.add_message(
+        session_id="session-1",
+        peer_id="telegram-default",
+        role="user",
+        content="Runtime-created duplicate identity message.",
+    )
+
+    packet = parse_tool_result(
+        provider.handle_tool_call("memory_build_peer_review_packet", {"limit": 100})
+    )["packet"]
+    patch = {
+        "schema": "hermes-local-memory.peer-review-patch.v1",
+        "peer_merges": [
+            {
+                "from_peer_id": "telegram-default",
+                "to_peer_id": provider.user_peer_id,
+                "keep_source_alias": True,
+                "verified": True,
+                "reason": "runtime sanitized Telegram default peer is Alice",
+            }
+        ],
+    }
+
+    dry_run = parse_tool_result(
+        provider.handle_tool_call(
+            "memory_apply_peer_review_patch",
+            {"packet": packet, "patch": patch, "apply": False},
+        )
+    )
+    assert dry_run["result"]["validation"]["valid"] is True
+    assert dry_run["result"]["writes"] == []
+
+    applied = parse_tool_result(
+        provider.handle_tool_call(
+            "memory_apply_peer_review_patch",
+            {"packet": packet, "patch": patch, "apply": True},
+        )
+    )
+    assert applied["result"]["writes"]["peers_merged"] == 1
+    assert provider.store.resolve_peer("telegram-default")["id"] == provider.user_peer_id
+    with provider.store.connect() as conn:
+        retired_peer = conn.execute(
+            "select * from peers where id = ?",
+            ("telegram-default",),
+        ).fetchone()
+        repaired_message = conn.execute(
+            "select peer_id from messages where id = ?",
+            (message["id"],),
+        ).fetchone()
+    assert retired_peer is None
+    assert repaired_message["peer_id"] == provider.user_peer_id
+
+
 def test_provider_can_apply_reflection_patch_from_agent_tools(tmp_path: Path) -> None:
     provider = make_provider(tmp_path)
     provider.sync_turn("I prefer memory maintenance to be auditable.", "Understood.")

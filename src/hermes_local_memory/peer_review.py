@@ -79,6 +79,32 @@ def validate_peer_review_patch(
         if not isinstance(confidence, int | float) or not 0 <= confidence <= 1:
             errors.append(f"confidence must be between 0 and 1 for alias: {alias}")
 
+    seen_peer_merges: set[str] = set()
+    for item in patch.get("peer_merges", []):
+        if not isinstance(item, dict):
+            errors.append("peer_merges items must be objects")
+            continue
+        from_peer_id = item.get("from_peer_id")
+        to_peer_id = item.get("to_peer_id")
+        if not isinstance(from_peer_id, str) or not from_peer_id.strip():
+            errors.append("peer_merges items require from_peer_id")
+            continue
+        if from_peer_id in seen_peer_merges:
+            errors.append(f"peer can only appear in one peer merge action: {from_peer_id}")
+        seen_peer_merges.add(from_peer_id)
+        if from_peer_id not in packet_peer_ids:
+            errors.append(f"merge source peer not present in peer review packet: {from_peer_id}")
+        if not isinstance(to_peer_id, str) or not to_peer_id.strip():
+            errors.append(f"peer merge target is required for peer: {from_peer_id}")
+        elif store.resolve_peer(to_peer_id) is None:
+            errors.append(f"unknown target peer id: {to_peer_id}")
+        elif to_peer_id == from_peer_id:
+            errors.append(f"peer merge target must differ from source: {from_peer_id}")
+        if not isinstance(item.get("keep_source_alias", True), bool):
+            errors.append(f"keep_source_alias must be boolean for peer: {from_peer_id}")
+        if not isinstance(item.get("verified", True), bool):
+            errors.append(f"verified must be boolean for peer: {from_peer_id}")
+
     for item in patch.get("human_prompts", []):
         if not isinstance(item, dict):
             errors.append("human_prompts items must be objects")
@@ -108,7 +134,11 @@ def apply_peer_review_patch(
 ) -> dict[str, Any]:
     validation = validate_peer_review_patch(store, packet, patch)
     prompts = _normalized_human_prompts(patch.get("human_prompts", []))
+    peer_merges = patch.get("peer_merges", [])
     writes = {"aliases_moved": 0, "human_prompts_recorded": len(prompts)}
+    if peer_merges:
+        writes["peers_merged"] = 0
+        writes["peer_merge_results"] = []
     if apply and validation["valid"]:
         for item in patch.get("alias_moves", []):
             store.set_alias(
@@ -119,6 +149,15 @@ def apply_peer_review_patch(
                 verified=bool(item.get("verified", False)),
             )
             writes["aliases_moved"] += 1
+        for item in patch.get("peer_merges", []):
+            result = store.merge_peer(
+                item["from_peer_id"],
+                item["to_peer_id"],
+                keep_source_alias=bool(item.get("keep_source_alias", True)),
+                source=item.get("source") or "agent-peer-review",
+            )
+            writes["peers_merged"] += 1 if result.get("deleted") else 0
+            writes["peer_merge_results"].append(result)
 
     return {
         "mode": "apply" if apply else "dry-run",

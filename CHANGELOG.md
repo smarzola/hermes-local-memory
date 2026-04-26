@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v0.2.1
+
+### Added
+
+- Added provider peer-review `peer_merges` patches so maintenance jobs can merge runtime/ephemeral duplicate peers into canonical peers through `memory_apply_peer_review_patch`, while preserving retired peer IDs as aliases.
+- Added packaged maintenance-skill guidance for `peer_merges` and `keep_source_alias=true` identity reconciliation.
+
+### Fixed
+
+- Fixed runtime reconciliation for sanitized peer IDs such as `telegram-default`: when `telegram:default` already resolves to a canonical peer, direct message/session references are moved to the canonical peer and the retired peer ID is retained as a verified alias.
+- Fixed the release workflow so tag pushes create GitHub releases from CI-built artifacts as well as publishing those same artifacts to PyPI via Trusted Publishing.
+- Made artifact packaging tests use the current project version instead of a hard-coded released version.
+
 ## v0.2.0
 
 ### Changed

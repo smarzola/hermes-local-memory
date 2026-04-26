@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tarfile
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -13,8 +14,10 @@ def test_hatch_build_configuration_includes_packaged_agent_skill() -> None:
 
 
 def test_built_artifacts_include_local_memory_maintenance_skill() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    version = pyproject["project"]["version"]
     skill_path = "skills/local-memory-maintenance/SKILL.md"
-    artifacts = sorted(Path("dist").glob("hermes_local_memory-0.2.0*"))
+    artifacts = sorted(Path("dist").glob(f"hermes_local_memory-{version}*"))
 
     if not artifacts:
         # This test is primarily a release/build verification. Normal unit-test

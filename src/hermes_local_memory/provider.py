@@ -354,12 +354,18 @@ class LocalMemoryProvider:
         session_title = kwargs.get("session_title")
 
         user_alias = f"{self.platform}:{raw_user_id}"
+        sanitized_user_peer_id = self._sanitize_peer_id(f"{self.platform}-{raw_user_id}")
         existing_user_peer = self.store.resolve_peer(user_alias)
         self.user_peer_id = (
-            existing_user_peer["id"]
-            if existing_user_peer is not None
-            else self._sanitize_peer_id(f"{self.platform}-{raw_user_id}")
+            existing_user_peer["id"] if existing_user_peer is not None else sanitized_user_peer_id
         )
+        if existing_user_peer is not None and sanitized_user_peer_id != self.user_peer_id:
+            self.store.merge_peer(
+                sanitized_user_peer_id,
+                self.user_peer_id,
+                keep_source_alias=True,
+                source="provider-runtime-reconciliation",
+            )
         existing_assistant_peer = self.store.resolve_peer(agent_identity)
         self.assistant_peer_id = (
             existing_assistant_peer["id"]

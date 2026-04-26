@@ -17,6 +17,8 @@ def test_local_memory_maintenance_skill_is_packaged_for_agents() -> None:
     assert "memory_build_honcho_migration_review_packet" in content
     assert "memory_apply_honcho_migration_review_patch" in content
     assert "first-migration Honcho memories" in content
+    assert "peer_merges" in content
+    assert "keep_source_alias" in content
     assert "memory_get_card" in content
     assert "memory_set_card" in content
     assert "Never mutate raw messages" in content

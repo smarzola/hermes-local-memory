@@ -732,7 +732,7 @@ uv build
 # or: python -m build
 ```
 
-CI runs on Python 3.11, 3.12, 3.13, and 3.14. See [docs/release.md](docs/release.md) for the release checklist.
+CI runs on Python 3.11, 3.12, 3.13, and 3.14. Release creation and PyPI publication are handled by the tag-triggered GitHub Actions workflow; local builds are preflight checks only. See [docs/release.md](docs/release.md) for the release checklist.
 
 ---
 
