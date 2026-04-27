@@ -48,3 +48,18 @@ def test_publish_workflow_uses_pypi_environment_for_trusted_publishing() -> None
     assert "environment:" in workflow
     assert "name: pypi" in workflow
     assert "id-token: write" in workflow
+
+
+def test_workflows_use_node24_compatible_actions() -> None:
+    workflows = [
+        Path(".github/workflows/ci.yml").read_text(encoding="utf-8"),
+        Path(".github/workflows/publish.yml").read_text(encoding="utf-8"),
+    ]
+    combined = "\n".join(workflows)
+
+    assert "actions/checkout@v6" in combined
+    assert "actions/setup-python@v6" in combined
+    assert "softprops/action-gh-release@v3" in combined
+    assert "actions/checkout@v4" not in combined
+    assert "actions/setup-python@v5" not in combined
+    assert "softprops/action-gh-release@v2" not in combined
