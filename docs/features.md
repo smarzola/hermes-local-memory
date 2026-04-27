@@ -136,7 +136,7 @@ From a GitHub checkout used for development or unreleased debugging:
 PYTHONPATH=src python -m hermes_local_memory.cli install-shim --hermes-home ~/.hermes
 ```
 
-The shim calls Hermes' `register_memory_provider` hook and instantiates `LocalMemoryProvider`.
+The shim calls Hermes' `register_memory_provider` hook and instantiates `LocalMemoryProvider`. It also registers the package-versioned maintenance runbook as the plugin skill `local_memory:maintenance`; scheduled jobs should prefer that namespaced skill over copied global skills so package updates keep maintenance guidance current.
 
 Safe validation path without switching the live provider:
 

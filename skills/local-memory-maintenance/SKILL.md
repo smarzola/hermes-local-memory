@@ -145,23 +145,24 @@ Report these sections concisely:
 
 ## Cron prompt skeleton
 
-Install or update the packaged skill at setup/update time with:
+When the Local Memory plugin shim is installed and enabled, prefer the plugin-bundled skill `local_memory:maintenance`. That namespaced skill is loaded from the installed package/plugin, so package updates keep the maintenance guidance current without copying a global skill into `~/.hermes/skills`.
 
-```bash
-hermes-local-memory sync-skills --hermes-home ~/.hermes
-```
-
-Then attach/load the installed `local-memory-maintenance` skill on the Hermes cron job. Keep the cron prompt short; all flow details live in this skill.
+Keep cron prompts short and policy-focused. The prompt should choose recipe/phases, apply policy, reporting policy, database, and runtime identity; it should not duplicate the full maintenance flow.
 
 ```text
-Use the loaded local-memory-maintenance skill to run Hermes Local Memory maintenance.
+Load and follow the plugin-provided `local_memory:maintenance` skill to run Hermes Local Memory maintenance.
 
+Policy:
+- phases/recipe: full maintenance except first Honcho migration unless explicitly requested or newly actionable
+- apply: bounded, policy-safe changes after dry-run validation; skip/escalate ambiguous or large plans
+- reporting: always report audit fields; for quiet deployments use on_error or silent instead
 Database: ~/.hermes/memory/local_memory.sqlite
-Mode: apply bounded, policy-safe changes after dry-run validation; skip/escalate ambiguous or large plans.
 Runtime identity: use the current Hermes memory tool context. If provider tools are unavailable, instantiate LocalMemoryProvider from the installed hermes-local-memory package with the target database and realistic platform/user/agent identity.
 
-Follow the skill's full maintenance cycle and report format. Do not duplicate the flow here. Never mutate raw messages. Never switch the live Hermes provider config.
+Follow the loaded skill's maintenance cycle and report format. Do not duplicate the flow here. Never mutate raw messages. Never switch the live Hermes provider config.
 ```
+
+Compatibility path: older Hermes installations that cannot load plugin-provided skills may still install/update the copied skill with `hermes-local-memory sync-skills --hermes-home ~/.hermes` and load `local-memory-maintenance`, but the plugin skill is the preferred primary path.
 
 ## Field lessons from cron runs
 

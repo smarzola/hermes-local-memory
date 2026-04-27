@@ -107,7 +107,7 @@ Full setup/adoption instructions live in `docs/setup.md`. Release steps live in 
 
 ## Scheduled maintenance guidance
 
-Do not add a scheduler to this package. The reusable agent workflow is packaged in `skills/local-memory-maintenance/SKILL.md`; instruct humans and Hermes Agent to install/attach/load that skill before creating a recurring Hermes cron job that:
+Do not add a scheduler to this package. The reusable agent workflow is packaged as the plugin-provided skill `local_memory:maintenance` when the shim is installed and enabled. Keep cron prompts short and policy-focused; load the plugin skill rather than copying the flow into the prompt. The copied `skills/local-memory-maintenance/SKILL.md` path remains a compatibility fallback. A recurring Hermes cron job should:
 
 1. creates a timestamped SQLite backup before any apply step,
 2. runs `memory_build_peer_review_packet` and resolves only deterministic aliases through `memory_apply_peer_review_patch`, otherwise emits human prompts,

@@ -157,7 +157,7 @@ This writes:
 ~/.hermes/plugins/local_memory/__init__.py
 ```
 
-It does **not** modify `~/.hermes/config.yaml` and does **not** switch your live memory provider.
+It does **not** modify `~/.hermes/config.yaml` and does **not** switch your live memory provider. It also registers the package-versioned maintenance skill as `local_memory:maintenance`; prefer that namespaced plugin skill for scheduled maintenance so updates come from the installed package rather than a copied skill.
 
 ### Configure Hermes
 
@@ -628,23 +628,22 @@ card-review / consolidation patches -> compact card synthesis when needed
 compact cards + durable facts + summaries + retrieval -> prompt injection
 ```
 
-Before creating or updating the cron job, install/update the packaged maintenance skill into Hermes' skills directory:
-
-```bash
-hermes-local-memory sync-skills --hermes-home ~/.hermes
-```
-
-Attach/load `local-memory-maintenance` on the Hermes cron job. Keep the cron prompt short because the full flow lives in the skill and is updated by package upgrades:
+When the Local Memory plugin shim is installed and enabled, prefer the plugin-bundled skill `local_memory:maintenance` for scheduled jobs. Keep the cron prompt short because the full flow lives in the package-versioned skill; package updates keep the runbook current without copying a global skill into `~/.hermes/skills`.
 
 ```text
-Use the loaded local-memory-maintenance skill to run Hermes Local Memory maintenance.
+Load and follow the plugin-provided `local_memory:maintenance` skill to run Hermes Local Memory maintenance.
 
+Policy:
+- phases/recipe: full maintenance except first Honcho migration unless explicitly requested or newly actionable
+- apply: bounded, policy-safe changes after dry-run validation; skip/escalate ambiguous or large plans
+- reporting: always report audit fields; for quiet deployments use on_error or silent instead
 Database: ~/.hermes/memory/local_memory.sqlite
-Mode: apply bounded, policy-safe changes after dry-run validation; skip/escalate ambiguous or large plans.
 Runtime identity: use the current Hermes memory tool context. If provider tools are unavailable, instantiate LocalMemoryProvider from the installed hermes-local-memory package with the target database and realistic platform/user/agent identity.
 
-Follow the skill's full maintenance cycle and report format. Do not duplicate the flow here. Never mutate raw messages. Never switch the live Hermes provider config.
+Follow the loaded skill's maintenance cycle and report format. Do not duplicate the flow here. Never mutate raw messages. Never switch the live Hermes provider config.
 ```
+
+Compatibility path: older Hermes installations that cannot load plugin-provided skills may still run `hermes-local-memory sync-skills --hermes-home ~/.hermes` after install/update and attach/load the copied `local-memory-maintenance` skill.
 
 A more prudent/report-only variant is also useful for new deployments or risky imports:
 
@@ -657,7 +656,7 @@ This gives both modes:
 - **autonomous by default** for well-scoped, well-validated maintenance
 - **report-only** when a human wants extra caution
 
-To schedule this from Hermes, run `hermes-local-memory sync-skills --hermes-home ~/.hermes` after install or update, attach/load the installed `local-memory-maintenance` skill on the recurring Hermes cron job, and keep the job prompt deployment-specific rather than duplicating the maintenance flow. Recommended starting schedule: nightly. High-volume deployments can move to every 6 hours after the dry-run reports look clean.
+Recommended starting schedule: nightly. High-volume deployments can move to every 6 hours after the dry-run reports look clean. Users who want quieter background operation can keep the same plugin skill but set reporting policy to `on_error` or `silent` in the cron prompt.
 
 ## Documentation
 

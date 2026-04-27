@@ -73,7 +73,9 @@ This writes:
 ~/.hermes/plugins/local_memory/__init__.py
 ```
 
-The shim imports `LocalMemoryProvider` and registers it with Hermes. It does not edit `~/.hermes/config.yaml`.
+The shim imports `LocalMemoryProvider` and registers it with Hermes. It also exposes the package-versioned maintenance skill as the plugin skill `local_memory:maintenance`. Prefer that namespaced skill in scheduled maintenance jobs; it is loaded from the installed package/plugin rather than copied into `~/.hermes/skills`, so package updates keep the runbook current.
+
+The shim does not edit `~/.hermes/config.yaml`.
 
 ## Validate without switching providers
 

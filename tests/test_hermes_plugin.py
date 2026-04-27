@@ -9,9 +9,13 @@ from hermes_local_memory.hermes_plugin import write_plugin_shim
 class Collector:
     def __init__(self) -> None:
         self.provider = None
+        self.skills = {}
 
     def register_memory_provider(self, provider) -> None:  # noqa: ANN001
         self.provider = provider
+
+    def register_skill(self, name: str, path) -> None:  # noqa: ANN001
+        self.skills[name] = Path(path)
 
 
 def import_plugin(path: Path):  # noqa: ANN201
@@ -37,6 +41,11 @@ def test_write_plugin_shim_creates_hermes_discoverable_register_function(tmp_pat
 
     assert collector.provider is not None
     assert collector.provider.name == "local"
+    assert collector.skills["maintenance"].name == "SKILL.md"
+    assert collector.skills["maintenance"].is_file()
+    assert "name: local-memory-maintenance" in collector.skills["maintenance"].read_text(
+        encoding="utf-8"
+    )
     assert {schema["name"] for schema in collector.provider.get_tool_schemas()} == {
         "memory_get_card",
         "memory_set_card",
@@ -69,3 +78,5 @@ def test_plugin_shim_contains_absolute_package_path_for_external_hermes_loading(
     content = shim_path.read_text(encoding="utf-8")
     assert str(package_root) in content
     assert "register_memory_provider(LocalMemoryProvider())" in content
+    assert "register_skill" in content
+    assert "local-memory-maintenance" in content
