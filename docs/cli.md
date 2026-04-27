@@ -37,7 +37,7 @@ Current write commands are explicit repair/mutation commands:
 - `apply-peer-review-patch --apply`
 - `apply-reflection-patch --apply`
 
-`install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
+`install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider. It removes managed legacy copied `local-memory-maintenance` skills so agents use the package-provided `local_memory:maintenance` runbook.
 
 Repair and consolidation commands are intentionally explicit: they name the object being changed and return the changed row or plan, preferably as JSON for auditability. They do not perform hidden rewrites. `consolidate --dry-run` is read-only; `consolidate --apply` is the mutating form.
 

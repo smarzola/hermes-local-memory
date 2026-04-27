@@ -69,9 +69,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Package src root to add to the shim sys.path",
     )
     install.add_argument(
-        "--no-sync-skills",
+        "--keep-copied-skill",
         action="store_true",
-        help="Do not install/update packaged Hermes skills while installing the shim",
+        help="Do not remove a managed legacy copied maintenance skill while installing the shim",
+    )
+    install.add_argument(
+        "--force-remove-copied-skill",
+        action="store_true",
+        help=(
+            "Remove an existing copied maintenance skill even when it lacks "
+            "hermes-local-memory provenance"
+        ),
     )
     install.add_argument("--json", action="store_true", help="Print JSON")
 
@@ -419,13 +427,69 @@ def _packaged_skill_dir() -> Path:
     return candidates[0]
 
 
+def _copied_skill_dir(hermes_home: str | Path) -> Path:
+    return Path(hermes_home).expanduser() / "skills" / "local-memory-maintenance"
+
+
+def _copied_skill_provenance_path(hermes_home: str | Path) -> Path:
+    return _copied_skill_dir(hermes_home) / ".hermes-local-memory-source.json"
+
+
+def _is_managed_copied_skill(target_dir: Path) -> bool:
+    provenance_path = target_dir / ".hermes-local-memory-source.json"
+    if not provenance_path.is_file():
+        return False
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    return (
+        provenance.get("package") == "hermes-local-memory"
+        and provenance.get("skill") == "local-memory-maintenance"
+    )
+
+
+def _cleanup_copied_skill(
+    hermes_home: str | Path,
+    *,
+    force: bool = False,
+    keep: bool = False,
+) -> dict[str, Any]:
+    target_dir = _copied_skill_dir(hermes_home)
+    result: dict[str, Any] = {
+        "skill": "local-memory-maintenance",
+        "target": str(target_dir / "SKILL.md"),
+        "exists": target_dir.exists(),
+        "removed": False,
+        "managed": False,
+        "reason": "not_present",
+    }
+    if not target_dir.exists():
+        return result
+
+    managed = _is_managed_copied_skill(target_dir)
+    result["managed"] = managed
+    if keep:
+        result["reason"] = "kept_by_request"
+        return result
+    if managed or force:
+        shutil.rmtree(target_dir)
+        result["removed"] = True
+        result["reason"] = "managed_copy_superseded_by_plugin_skill" if managed else "forced"
+        return result
+
+    result["reason"] = "unmanaged_copy_preserved"
+    result["action"] = "remove manually or rerun with --force-remove-copied-skill"
+    return result
+
+
 def _sync_packaged_skills(hermes_home: str | Path) -> dict[str, Any]:
     source_dir = _packaged_skill_dir()
     source_skill = source_dir / "SKILL.md"
     if not source_skill.is_file():
         raise FileNotFoundError(f"packaged skill not found: {source_skill}")
 
-    target_dir = Path(hermes_home).expanduser() / "skills" / "local-memory-maintenance"
+    target_dir = _copied_skill_dir(hermes_home)
     target_skill = target_dir / "SKILL.md"
     source_content = source_skill.read_text(encoding="utf-8")
     old_content = target_skill.read_text(encoding="utf-8") if target_skill.exists() else None
@@ -469,13 +533,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install-shim":
         plugin_dir = Path(args.hermes_home).expanduser() / "plugins" / "local_memory"
         shim = write_plugin_shim(plugin_dir, package_root=args.package_root)
-        skill_sync = None if args.no_sync_skills else _sync_packaged_skills(args.hermes_home)
+        copied_skill_cleanup = _cleanup_copied_skill(
+            args.hermes_home,
+            force=args.force_remove_copied_skill,
+            keep=args.keep_copied_skill,
+        )
+        result = {
+            "shim": str(shim),
+            "plugin_skill": {
+                "name": "local_memory:maintenance",
+                "source": str(_packaged_skill_dir() / "SKILL.md"),
+            },
+            "copied_skill_cleanup": copied_skill_cleanup,
+        }
         if args.json:
-            _print_one({"shim": str(shim), "skill_sync": skill_sync}, as_json=True)
+            _print_one(result, as_json=True)
         else:
             print(shim)
-            if skill_sync is not None:
-                print(skill_sync["target"])
+            if copied_skill_cleanup["removed"]:
+                print(f"removed {copied_skill_cleanup['target']}")
         return 0
 
     if args.command == "sync-skills":

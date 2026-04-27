@@ -13,7 +13,7 @@ metadata:
 
 Use this skill when Hermes Agent is asked to keep a Hermes Local Memory database healthy. The default product posture is **daily autonomous care**: do useful safe work in the background, stay quiet when healthy, and interrupt only for errors or genuinely human decisions.
 
-Prefer loading this as the plugin-bundled skill `local_memory:maintenance` so the runbook follows the installed Local Memory package version. The copied `local-memory-maintenance` skill remains a compatibility path for older Hermes installations.
+Prefer loading this as the plugin-bundled skill `local_memory:maintenance` so the runbook follows the installed Local Memory package version. The copied `local-memory-maintenance` skill is legacy fallback only for older Hermes installations and should not coexist in normal installs.
 
 ## Product posture
 

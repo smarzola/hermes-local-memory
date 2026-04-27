@@ -157,7 +157,7 @@ This writes:
 ~/.hermes/plugins/local_memory/__init__.py
 ```
 
-It does **not** modify `~/.hermes/config.yaml` and does **not** switch your live memory provider. It also registers the package-versioned maintenance skill as `local_memory:maintenance`; prefer that namespaced plugin skill for scheduled maintenance so updates come from the installed package rather than a copied skill.
+It does **not** modify `~/.hermes/config.yaml` and does **not** switch your live memory provider. It registers the package-versioned maintenance skill as `local_memory:maintenance`; prefer that namespaced plugin skill for scheduled maintenance so updates come from the installed package. `install-shim` also removes managed legacy copied skill installs to prevent stale runbooks.
 
 ### Configure Hermes
 
@@ -628,7 +628,7 @@ card-review / consolidation patches -> compact card synthesis when needed
 compact cards + durable facts + summaries + retrieval -> prompt injection
 ```
 
-When the Local Memory plugin shim is installed and enabled, prefer the plugin-bundled skill `local_memory:maintenance` for scheduled jobs. Keep the cron prompt short because the full flow lives in the package-versioned skill; package updates keep the runbook current without copying a global skill into `~/.hermes/skills`.
+When the Local Memory plugin shim is installed and enabled, prefer the plugin-bundled skill `local_memory:maintenance` for scheduled jobs. Keep the cron prompt short because the full flow lives in the package-versioned skill; package updates plus `install-shim` keep the shim current while managed copied legacy skills are removed to avoid stale runbooks.
 
 ```text
 Load and follow the plugin-provided `local_memory:maintenance` skill to run Hermes Local Memory maintenance.
@@ -643,7 +643,7 @@ Runtime identity: use the current Hermes memory tool context. If provider tools 
 Follow the loaded skill's maintenance cycle and report format. Do not duplicate the flow here. Never mutate raw messages. Never switch the live Hermes provider config.
 ```
 
-Compatibility path: older Hermes installations that cannot load plugin-provided skills may still run `hermes-local-memory sync-skills --hermes-home ~/.hermes` after install/update and attach/load the copied `local-memory-maintenance` skill.
+Compatibility path only: older Hermes installations that cannot load plugin-provided skills may explicitly run `hermes-local-memory sync-skills --hermes-home ~/.hermes` after install/update and attach/load the copied `local-memory-maintenance` skill.
 
 A more prudent/report-only variant is also useful for new deployments or risky imports:
 

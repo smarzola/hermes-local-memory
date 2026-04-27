@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.3.0
+
+### Changed
+
+- Changed `install-shim` to prefer the package-provided plugin skill `local_memory:maintenance` instead of copying `local-memory-maintenance` into `~/.hermes/skills` by default.
+- Made `install-shim` remove managed legacy copied maintenance skills when provenance confirms they were installed by `hermes-local-memory`, preventing stale copied runbooks from shadowing the packaged skill.
+- Kept `sync-skills` as an explicit legacy compatibility path for older Hermes installations that cannot load plugin-provided skills.
+- Updated Local Memory maintenance docs and agent guidance to treat copied `local-memory-maintenance` as legacy fallback only.
+
 ## v0.2.3
 
 ### Changed
@@ -14,7 +23,7 @@
 ### Added
 
 - Added `hermes-local-memory sync-skills` to install/update the packaged `local-memory-maintenance` skill into a Hermes home directory without modifying Hermes Agent.
-- Made `install-shim` sync packaged skills by default, with `--no-sync-skills` available for shim-only installs.
+- Made `install-shim` register the package-provided maintenance skill and remove managed legacy copied skills by default; `sync-skills` remains an explicit compatibility fallback.
 - Added provenance metadata when replacing an existing installed maintenance skill. Existing skill directories are removed before sync so stale copies/backups are not picked up as extra Hermes skills.
 
 ### Changed
