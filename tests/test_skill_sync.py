@@ -23,7 +23,8 @@ def test_sync_skills_installs_packaged_maintenance_skill(tmp_path: Path, capsys)
     assert Path(result["target"]) == skill_path
     content = skill_path.read_text(encoding="utf-8")
     assert "name: local-memory-maintenance" in content
-    assert "peer_merges" in content
+    assert "daily autonomous care" in content
+    assert "local_memory:maintenance" in content
     assert "keep_source_alias" in content
 
     provenance_path = skill_path.with_name(".hermes-local-memory-source.json")
@@ -46,7 +47,7 @@ def test_sync_skills_updates_stale_copy_without_skill_backup(tmp_path: Path, cap
     assert result["changed"] is True
     assert result["removed_existing"] is True
     assert "backup" not in result
-    assert "peer_merges" in stale.read_text(encoding="utf-8")
+    assert "daily autonomous care" in stale.read_text(encoding="utf-8")
     assert not list(skills_root.glob("local-memory-maintenance.backup-*"))
     assert [path.name for path in skills_root.iterdir()] == ["local-memory-maintenance"]
 

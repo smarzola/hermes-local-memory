@@ -9,11 +9,12 @@ def test_local_memory_maintenance_skill_is_packaged_for_agents() -> None:
     content = SKILL_PATH.read_text(encoding="utf-8")
 
     assert "name: local-memory-maintenance" in content
-    assert "Policy-driven Hermes Local Memory maintenance runbook" in content
+    assert "daily autonomous care" in content
     assert "local_memory:maintenance" in content
-    assert "Recipe: quiet-deterministic" in content
-    assert "Apply policy: safe-deterministic" in content
-    assert "Reporting: on-error" in content
+    assert "Recipe: daily-care" in content
+    assert "Autonomy: autopilot" in content
+    assert "Reporting: action-required" in content
+    assert "Most users do not want to inspect maintenance" in content
     assert "memory_build_peer_review_packet" in content
     assert "memory_build_reflection_packets" in content
     assert "memory_maintenance" in content
@@ -21,14 +22,14 @@ def test_local_memory_maintenance_skill_is_packaged_for_agents() -> None:
     assert "memory_build_card_review_packet" in content
     assert "memory_build_honcho_migration_review_packet" in content
     assert "memory_apply_honcho_migration_review_patch" in content
-    assert "one-time Honcho migration review" in content
+    assert "one-time migration review" in content
     assert "migration material" in content
-    assert "peer_merges" in content
+    assert "peer merges" in content
     assert "keep_source_alias" in content
     assert "memory_get_card" in content
     assert "memory_set_card" in content
     assert "Preserve raw messages" in content
-    assert "Do not force the default full-audit recipe" in content
+    assert "This runbook is not Simone's personal audit ritual" in content
     assert "silent" in content
 
 

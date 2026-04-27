@@ -1,7 +1,7 @@
 ---
 name: local-memory-maintenance
-description: Policy-driven Hermes Local Memory maintenance runbook for scheduled or manual peer review, reflection, consolidation, card review, verification, and one-time migration review.
-version: 2.0.0
+description: Product-oriented Hermes Local Memory maintenance runbook for daily autonomous upkeep, scheduled background care, targeted repair, audits, and one-time migration review.
+version: 2.1.0
 author: Hermes Local Memory contributors
 license: MIT
 metadata:
@@ -11,67 +11,153 @@ metadata:
 
 # Local Memory Maintenance Runbook
 
-Use this skill when a Hermes Agent session is asked to maintain a Hermes Local Memory database. The skill is a **policy-driven runbook**: the prompt chooses the recipe, phases, apply policy, reporting policy, database, and runtime identity; this skill supplies the safe execution mechanics.
+Use this skill when Hermes Agent is asked to keep a Hermes Local Memory database healthy. The default product posture is **daily autonomous care**: do useful safe work in the background, stay quiet when healthy, and interrupt only for errors or genuinely human decisions.
 
 Prefer loading this as the plugin-bundled skill `local_memory:maintenance` so the runbook follows the installed Local Memory package version. The copied `local-memory-maintenance` skill remains a compatibility path for older Hermes installations.
 
-## Operating model
+## Product posture
 
-Local Memory owns storage, packet building, validation, deterministic consolidation, and auditable apply tools. Hermes Agent owns scheduling, model judgment, and user policy. Do not turn maintenance into a hidden dreamer or raw SQLite rewrite.
+Most users do not want to inspect maintenance. They want memory to keep working.
 
-A good cron prompt is short and policy-shaped:
+Default behavior, unless the prompt says otherwise:
+
+```text
+Recipe: daily-care
+Autonomy: autopilot
+Reporting: action-required
+Database: current Local Memory provider/default DB
+```
+
+This means:
+
+- run on a daily or more frequent schedule without user babysitting;
+- apply bounded safe changes after dry-run validation;
+- use Hermes Agent judgment for reflection and narrow repairs when evidence is clear;
+- keep cards and facts useful without dumping every fact into prompts;
+- send no verbose success report unless the user requested audit reporting;
+- escalate only blocked, ambiguous, risky, or failed work.
+
+The cron prompt should steer **policy**, not re-describe the maintenance algorithm:
 
 ```text
 Load and follow `local_memory:maintenance`.
-
-Recipe: quiet-deterministic | reflection-weekly | full-audit | report-only | custom
-Phases: backup, peer-review, reflection, deterministic, candidate-review, card-review, verification
-Apply policy: report-only | safe-deterministic | bounded-agent-review
-Reporting: always | on-change | on-error | silent/local-only
-Database: ~/.hermes/memory/local_memory.sqlite
-Runtime identity: use the current Hermes memory context, or initialize LocalMemoryProvider with realistic platform/user/agent identity.
+Recipe: daily-care.
+Autonomy: autopilot.
+Reporting: action-required.
+Database: ~/.hermes/memory/local_memory.sqlite.
 ```
 
-If the user provides a custom prompt, map it to these knobs and follow that policy. Do not force the default full-audit recipe on users who asked for quiet, split-schedule, report-only, or phase-specific maintenance.
+If the user gives a custom schedule or policy, follow it. This runbook is not Simone's personal audit ritual; it is a maintenance product surface with sane defaults and escape hatches.
 
-## Policy knobs
+## Recipes
 
-### Recipes
+### `daily-care` — default
 
-- `quiet-deterministic`: backup if applying, run deterministic maintenance dry-run/apply if safe, verify. No semantic agent review. Report only on error/action required unless the prompt asks otherwise.
-- `reflection-weekly`: backup if applying, build reflection packets, produce evidence-linked reflection patches, validate/apply according to policy, verify. Good for weekly or lower-frequency jobs.
-- `full-audit`: backup, peer review, reflection, deterministic maintenance, optional candidate/card review, verification, concise audit report. Good for initial adoption and operator-facing runs.
-- `report-only`: run selected phases with all apply flags false. Produce recommendations but no mutations beyond non-memory inspection.
-- `migration-once`: one-time Honcho migration review only when explicitly requested or a fresh import batch needs adoption.
-- `custom`: run only the phases specified by the prompt.
+For most users, daily or more frequent.
 
-### Apply policy
+Runs:
 
-- `report-only`: never apply provider mutations. Validate proposed patches with `apply=false` when useful.
-- `safe-deterministic`: apply only deterministic, bounded changes from provider dry-runs: duplicate supersedes, safe local/reflection candidate promotions, and deterministic empty-card bootstraps. No agent-generated semantic patches are applied.
-- `bounded-agent-review`: agent may produce peer/reflection/candidate/card patches, but must validate with `apply=false` first and apply only narrow, evidence-backed changes within the prompt's phase and reporting policy.
+1. backup when applying;
+2. peer review for obvious identity repairs;
+3. reflection for stale windows;
+4. deterministic all-pairs maintenance;
+5. targeted candidate/card cleanup only when a prior phase reveals a bounded, obvious need;
+6. verification.
 
-Never bulk-promote imported Honcho candidates through deterministic maintenance. Imported Honcho memories are migration material, not routine nightly promotion material.
+Applies safe work automatically under `autopilot`. Reports only action-required/error by default.
 
-### Reporting policy
+### `quiet-care`
 
-- `always`: deliver a concise user-facing report.
-- `on-change`: report only if changes were applied, important packets were reviewed, or human action is needed.
-- `on-error`: report only blocked/error/action-required outcomes.
-- `silent` or `local-only`: do not send a user-facing success report. If the platform requires a final response, keep it minimal. Still preserve auditability through tool outputs, backups, and local logs when available.
+Same as `daily-care`, but with stricter silence. Best for users who want background operation and local/auditable traces only.
 
-Respect the requested reporting policy. Do not send nightly migration/bulk-promotion noise after first migration has completed unless there is a new actionable issue.
+Reports only if blocked, failed, or human input is required. If the platform requires a final response, keep it to a single line.
 
-## Invariants
+### `deep-care`
+
+For weekly/monthly deeper housekeeping or after high-volume usage.
+
+Runs daily-care plus broader candidate review and card review for peers with sparse, stale, verbose, or duplicate-heavy memory. Still validates before applying. Reports changes unless the prompt asks for silence.
+
+### `audit`
+
+For operators, debugging, release checks, and adoption validation.
+
+Runs selected phases and produces an explicit report with backup path, changed counts, skipped/action-required items, and verification. Audit is a secondary mode, not the default product posture.
+
+### `dry-run`
+
+For cautious operators or new deployments.
+
+No mutations except safe read-only inspection. Build packets/plans, validate candidate patches with `apply=false` when useful, and report what would happen.
+
+### `migration-once`
+
+For first adoption of imported Honcho memory or a fresh import batch.
+
+This is never part of routine daily care unless explicitly requested or newly actionable. After first migration completes, do not keep reporting skipped imported-Honcho bulk promotion.
+
+## Autonomy levels
+
+### `autopilot` — default
+
+Do the safe thing without asking:
+
+- apply deterministic maintenance when dry-run counts are bounded and safe;
+- apply clear peer alias/merge repairs when evidence is unambiguous;
+- apply reflection patches when facts/summaries are directly supported by packet message IDs;
+- apply narrow candidate/card repairs when they are compact, validated, and policy-compatible;
+- skip and mark action-required when confidence is low.
+
+### `conservative`
+
+Apply deterministic maintenance only. Build semantic review packets, but do not apply agent-generated patches unless explicitly requested.
+
+### `dry-run`
+
+Never apply. Produce a report or local audit only.
+
+## Reporting modes
+
+### `action-required` — default
+
+No user-facing success report. Report only when:
+
+- a tool fails;
+- a validation fails;
+- a plan is too large/risky/ambiguous;
+- identity is confused;
+- human input is needed;
+- verification finds unexpected residual work.
+
+### `changes`
+
+Report when changes were applied or action is required.
+
+### `digest`
+
+Send a compact scheduled digest even when healthy.
+
+### `audit`
+
+Send full operator-facing details.
+
+### `silent`
+
+Do not send messages unless the run cannot safely continue. Preserve auditability through backups, tool outputs, local files, or cron logs where available.
+
+Respect reporting policy. Do not invent noisy reports just because a phase was skipped intentionally.
+
+## Safety invariants
 
 - Preserve raw messages. Never edit or delete raw history during maintenance.
-- Make or verify a recent SQLite backup before any apply step.
+- Make or verify a recent SQLite backup before applying mutations. If a deployment has its own backup policy, obey it; otherwise create a timestamped copy.
 - Prefer provider tools over direct SQLite edits. CLI/Python wrappers are acceptable for backups, release checks, or reaching `LocalMemoryProvider.handle_tool_call(...)` when live provider tools are unavailable.
 - Validate every agent-produced patch with the corresponding `memory_apply_*_patch(apply=false)` before applying.
-- Treat large, noisy, ambiguous, identity-confused, or imported-candidate-heavy plans as skipped/action-required, not as work to force through.
+- Skip/action-required large, noisy, ambiguous, identity-confused, or imported-candidate-heavy plans.
 - New memories derived from reflection should be candidate facts with evidence message IDs, not immediately active facts.
 - Compact cards are synthesized views. Do not append every active fact into cards. Use full-card replacement only through explicit card review or `memory_set_card` when the prompt requested it.
 - Never pass an empty card to `memory_set_card` unless intentionally clearing with `allow_empty=true`.
+- Never bulk-promote imported Honcho candidates through deterministic maintenance.
 
 ## Provider tools
 
@@ -103,159 +189,158 @@ Packet/review/apply workflows:
 
 Use canonical names above. Legacy aliases may exist but should not appear in new prompts, docs, or reports.
 
-## Phase runbooks
+## Phase behavior
 
-Run only the phases selected by the prompt/recipe.
+Run the phases implied by the selected recipe/custom prompt.
 
-### Phase: backup
+### Backup
 
-Required before any apply step.
+Before applying, create or verify a recent timestamped SQLite backup. Keep backup details in audit output. Under `action-required` or `silent`, do not send backup path unless reporting is triggered.
 
-- Create a timestamped copy of the SQLite DB.
-- Report or record the backup path according to reporting policy.
-- If the job is report-only and no mutation can occur, backup may be skipped unless requested.
+### Peer review
 
-### Phase: peer-review
-
-Purpose: repair identity/alias issues before downstream reflection and retrieval.
+Purpose: keep identity resolution healthy.
 
 1. Call `memory_build_peer_review_packet`.
-2. If an alias move is obvious and evidence-supported, produce a peer review patch with `alias_moves`.
-3. If a runtime/ephemeral peer is clearly the same identity as a canonical peer, produce a patch with `peer_merges`, `from_peer_id`, `to_peer_id`, `keep_source_alias=true`, `verified=true`, and a short reason.
-4. Validate with `memory_apply_peer_review_patch(apply=false)`.
-5. Apply only under `bounded-agent-review` or an explicit compatible policy.
-6. Escalate ambiguous identities with concrete peer IDs/aliases.
+2. Apply obvious alias moves or peer merges only when evidence is unambiguous.
+3. Preserve retired peer IDs as aliases with `keep_source_alias=true` when merging runtime/ephemeral peers.
+4. Validate with `memory_apply_peer_review_patch(apply=false)` before applying.
+5. If uncertain, skip/action-required with concrete peer IDs and aliases.
 
-Do not move aliases merely to mark imported Honcho aliases verified when they already resolve to the intended canonical peer.
+Do not move imported Honcho aliases merely to mark them verified when they already resolve correctly.
 
-### Phase: reflection
+### Reflection
 
-Purpose: turn stale raw-message windows into candidate facts and session summaries.
+Purpose: make recent conversations useful as candidate facts and summaries.
 
 1. Call `memory_build_reflection_packets` with prompt-selected thresholds or defaults (`min_messages=20`, `max_messages=100`).
-2. For each packet, derive only facts and summaries clearly supported by message IDs in the packet.
-3. Prefer summary-only patches for historical/imported/task-local windows that are useful to checkpoint but not worth new durable facts.
+2. For each packet, create only evidence-linked candidate facts and/or session summaries.
+3. Prefer summary-only patches for historical/imported/task-local windows.
 4. Validate with `memory_apply_reflection_patch(apply=false)`.
-5. Apply only if policy allows and validation passes.
-6. Re-run packet build if needed to confirm the intended backlog was cleared.
+5. Under `autopilot`, apply clear, narrow reflection patches; otherwise follow autonomy policy.
+6. Re-run packet build only when needed to confirm backlog progress.
 
-Reflection facts should be candidates first. Do not create active facts directly from reflection.
+### Deterministic maintenance
 
-### Phase: deterministic
-
-Purpose: conservative all-pairs fact lifecycle maintenance.
+Purpose: do routine safe work.
 
 1. Call `memory_maintenance(promote_candidates=true, apply=false)`.
-2. Inspect counts and changed-pair summaries.
-3. Apply only if the plan is bounded and compatible with the apply policy:
-   - duplicate candidate supersedes;
-   - high-confidence local or `agent-reflection` candidate promotions;
-   - deterministic empty-card bootstrap from safe active facts.
-4. If safe, call `memory_maintenance(promote_candidates=true, apply=true)`.
-5. Skip/action-required if the plan is large, ambiguous, identity-confused, or mostly imported Honcho candidates.
+2. If counts are bounded and sources are safe, apply with `memory_maintenance(promote_candidates=true, apply=true)`.
+3. Safe routine changes include duplicate supersedes, high-confidence local/`agent-reflection` promotions, and deterministic empty-card bootstrap from safe active facts.
+4. Skip/action-required if the plan is large, ambiguous, identity-confused, or mostly imported Honcho candidates.
 
-### Phase: migration-once
+This phase is the backbone of daily-care.
 
-Purpose: first adoption of imported Honcho memory, not routine maintenance.
+### Candidate review
 
-Run only when the prompt explicitly asks for migration review or a fresh Honcho import batch is being adopted. If first migration already ran and no new import batch exists, omit this phase and do not mention skipped bulk promotion in routine reports.
+Purpose: handle important candidate facts that deterministic maintenance cannot safely decide.
 
-1. For relevant peers, call `memory_build_honcho_migration_review_packet`.
-2. Promote only stable, high-signal imported memories that are not already active/carded.
-3. Leave or retract noisy imported artifacts: raw numeric peer IDs, support/task-local notes, tool/system artifacts, duplicated prompt instructions, or one-off logistics unless explicitly requested.
-4. Rebuild compact cards from selected imports plus existing active facts only when policy allows.
-5. Validate with `memory_apply_honcho_migration_review_patch(apply=false)`.
-6. Apply only under explicit migration policy.
+Daily-care should run this only when a prior phase shows a small, obvious candidate set. Deep-care can inspect broader candidate packets.
 
-### Phase: candidate-review
-
-Purpose: narrow review of important remaining candidates.
-
-1. Call `memory_build_candidate_review_packet` for a selected peer and optional source filter.
-2. Promote, supersede, retract, or add compact card lines only when narrow and evidence-backed.
+1. Call `memory_build_candidate_review_packet` for selected peer/source.
+2. Promote/supersede/retract only narrow, evidence-backed facts.
 3. Validate with `memory_apply_candidate_review_patch(apply=false)`.
-4. Apply only if policy allows.
+4. Apply under `autopilot` only when the patch is compact and low-risk.
 
-This phase is not a license for broad imported-candidate promotion.
+### Card review
 
-### Phase: card-review
+Purpose: keep prompt-facing cards compact and helpful.
 
-Purpose: synthesize compact cards when they are sparse, stale, duplicate-heavy, too verbose, or polluted by task-local lines.
+Daily-care should not rewrite cards casually. It may fix obviously empty/sparse/polluted cards when bounded. Deep-care may do broader card synthesis.
 
 1. Call `memory_build_card_review_packet` for affected peers.
 2. Produce a complete replacement card, not an append-only diff.
 3. Keep cards compact, human-readable, and consistent with active facts plus selected high-signal candidates.
 4. Validate with `memory_apply_card_review_patch(apply=false)`.
-5. Apply only if policy allows and the replacement preserves important active facts.
+5. Apply only if the replacement clearly preserves important active facts.
 
-### Phase: verification
+### Migration-once
 
-Use enough verification for the selected recipe and reporting mode:
+Purpose: adopt imported Honcho memories once.
 
-- `memory_get_card` for affected peers;
-- `memory_context` to inspect actual prompt injection;
-- `memory_search` for key facts expected to be retrievable;
-- final `memory_maintenance(promote_candidates=true, apply=false)` to confirm no unexpected residual deterministic changes.
+Run only when explicitly requested or a fresh import batch is being adopted. Imported Honcho memories are migration material, not daily-care material.
 
-For quiet/silent jobs, verification failures or unexpected residual changes should become `action_required` and override silence.
+1. Call `memory_build_honcho_migration_review_packet` for relevant peers.
+2. Promote stable, high-signal imported memories that are not already active/carded.
+3. Leave or retract noisy imported artifacts: raw numeric peer IDs, support/task-local notes, tool/system artifacts, duplicated prompt instructions, or one-off logistics unless explicitly requested.
+4. Rebuild compact cards only when policy allows.
+5. Validate/apply with `memory_apply_honcho_migration_review_patch`.
 
-## Report shape
+After migration completes, omit this phase and omit skipped bulk-promotion noise from routine reports.
 
-Reports should be concise and policy-aware. Include only relevant sections for selected phases and reporting mode.
+### Verification
 
-Useful audit fields:
+For daily-care, verify cheaply and act on surprises:
 
-- recipe/phases and apply/reporting policy;
-- backup path, when created;
-- peer aliases moved or unresolved identity prompts;
-- reflection packets reviewed, candidate facts added, session summaries added;
-- deterministic maintenance counts and changes applied;
-- migration review changes only when migration was actually run or actionable;
-- candidate review/card review changes applied;
-- skipped/action-required items and why;
-- verification results for cards, context injection, search, and final deterministic dry-run.
+- final `memory_maintenance(promote_candidates=true, apply=false)` for unexpected residual deterministic changes;
+- `memory_get_card`, `memory_context`, or `memory_search` only for affected peers or when verification is requested/needed.
 
-If reporting is `silent` or `on-error` and the run is clean, do not produce a verbose success report.
+For audit/deep-care, include fuller verification details.
+
+## Reporting behavior
+
+Do not confuse auditability with messaging. A background maintenance product can be auditable without spamming the user.
+
+When reporting is triggered, include relevant compact fields:
+
+- recipe/autonomy/reporting mode;
+- backup path if created;
+- changes applied by phase;
+- action-required items and why;
+- validation or tool errors;
+- verification surprises;
+- migration review only when actually run or newly actionable.
+
+For clean `daily-care` with `action-required`, return no verbose report. If the platform requires a final message, use a minimal success line.
 
 ## Example prompts
 
-### Quiet deterministic daily
+### Default daily care
 
 ```text
 Load and follow `local_memory:maintenance`.
-Recipe: quiet-deterministic.
-Apply policy: safe-deterministic.
-Reporting: on-error.
+Recipe: daily-care.
+Autonomy: autopilot.
+Reporting: action-required.
 Database: ~/.hermes/memory/local_memory.sqlite.
 ```
 
-### Weekly reflection
+### More frequent quiet care
 
 ```text
 Load and follow `local_memory:maintenance`.
-Recipe: reflection-weekly.
-Apply policy: bounded-agent-review for reflection summaries and candidate facts only.
-Reporting: on-change.
+Recipe: quiet-care.
+Autonomy: autopilot.
+Reporting: silent.
+Run only routine safe maintenance and escalate failures.
 ```
 
-### Full operator audit
+### Weekly deep care
 
 ```text
 Load and follow `local_memory:maintenance`.
-Recipe: full-audit.
-Apply policy: bounded-agent-review.
-Reporting: always.
+Recipe: deep-care.
+Autonomy: autopilot.
+Reporting: changes.
+```
+
+### Operator audit
+
+```text
+Load and follow `local_memory:maintenance`.
+Recipe: audit.
+Autonomy: autopilot.
+Reporting: audit.
 Skip Honcho migration unless explicitly requested or a fresh import batch is pending.
 ```
 
-### Report-only dry run
+### Dry run
 
 ```text
 Load and follow `local_memory:maintenance`.
-Recipe: report-only.
-Phases: peer-review, reflection, deterministic, candidate-review, card-review, verification.
-Apply policy: report-only.
-Reporting: always.
+Recipe: dry-run.
+Autonomy: dry-run.
+Reporting: audit.
 ```
 
 ## Compatibility notes
