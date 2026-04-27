@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.2.3
+
+### Changed
+
+- Clarified packaged Local Memory maintenance guidance so first Honcho migration review is treated as a one-time adoption step, not recurring nightly report noise.
+- Updated maintenance reports to omit routine skipped imported-Honcho bulk-promotion/migration status after first migration has completed unless a fresh import or actionable issue requires review.
+
 ## v0.2.2
 
 ### Added

@@ -95,7 +95,10 @@ Legacy names may exist as hidden compatibility aliases, but agents should prefer
    - Skip large or imported-candidate-heavy plans.
 
 5. **First Honcho migration review**
-   - If this is the first adoption/migration from Honcho, do not ignore Honcho candidate memories just because deterministic maintenance will not bulk-promote them.
+   - This is a one-time adoption/migration step, not a recurring nightly maintenance topic.
+   - Run it only during first adoption/migration from Honcho, when explicitly requested, or when there are new imported Honcho candidates from a fresh import.
+   - If first migration has already been completed and no new imported Honcho batch is being adopted, skip this step silently. Do not keep reporting that broad imported-Honcho promotion was skipped.
+   - During first migration, do not ignore Honcho candidate memories just because deterministic maintenance will not bulk-promote them.
    - For peers with imported Honcho candidates/cards, call `memory_build_honcho_migration_review_packet`.
    - Inspect the packet's current card, active facts, and candidate facts before drafting a patch. Some peers may already have the useful facts active/carded and only noisy Honcho candidates remaining.
    - Promote only high-signal stable Honcho facts. Prefer not to promote episodic support/chat artifacts, facts phrased around raw numeric peer IDs, tool/system-note artifacts, or one-off medical/logistics questions unless the user has asked to remember them.
@@ -137,6 +140,7 @@ Report these sections concisely:
 - candidate review changes applied
 - card review changes applied
 - skipped/escalated items and why
+- Honcho migration status only when first migration was actually run, explicitly requested, or newly actionable; after first migration has completed, omit routine skipped imported-Honcho bulk-promotion/migration noise from the report.
 - verification results for cards, context injection, and search
 
 ## Cron prompt skeleton
