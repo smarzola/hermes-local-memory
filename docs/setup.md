@@ -73,7 +73,9 @@ This writes:
 ~/.hermes/plugins/local_memory/__init__.py
 ```
 
-The shim imports `LocalMemoryProvider` and registers it with Hermes. It does not edit `~/.hermes/config.yaml`.
+The shim imports `LocalMemoryProvider` and registers it with Hermes. It also exposes the package-versioned maintenance skill as the plugin skill `local_memory:maintenance`. Prefer that namespaced skill in scheduled maintenance jobs; it is loaded from the installed package/plugin rather than copied into `~/.hermes/skills`. `install-shim` removes managed legacy copied skills so stale runbooks do not shadow the packaged one.
+
+The shim does not edit `~/.hermes/config.yaml`.
 
 ## Validate without switching providers
 
@@ -220,7 +222,7 @@ If a human asks an agent to set up Local Memory, the agent should:
 
 1. install the published package with `uv tool install hermes-local-memory` or `pipx install hermes-local-memory`;
 2. verify `hermes-local-memory --help` works;
-3. install the shim with `hermes-local-memory install-shim --hermes-home ~/.hermes` without switching providers;
+3. install the shim with `hermes-local-memory install-shim --hermes-home ~/.hermes` without switching providers; this also removes managed legacy copied maintenance skills;
 4. choose a trial DB;
 5. import existing memory with `--dry-run` first;
 6. apply only after reviewing counts/warnings;

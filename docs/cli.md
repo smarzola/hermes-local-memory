@@ -37,7 +37,7 @@ Current write commands are explicit repair/mutation commands:
 - `apply-peer-review-patch --apply`
 - `apply-reflection-patch --apply`
 
-`install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider.
+`install-shim` writes a tiny Hermes plugin shim under `$HERMES_HOME/plugins/local_memory/__init__.py`. It does not change `config.yaml` and does not switch the active memory provider. It removes managed legacy copied `local-memory-maintenance` skills so agents use the package-provided `local_memory:maintenance` runbook.
 
 Repair and consolidation commands are intentionally explicit: they name the object being changed and return the changed row or plan, preferably as JSON for auditability. They do not perform hidden rewrites. `consolidate --dry-run` is read-only; `consolidate --apply` is the mutating form.
 
@@ -657,7 +657,9 @@ This package intentionally does not embed its own scheduler. Regular memory main
 
 Recommended primary pattern: autonomous but auditable. Reflection runs first; consolidation runs second. Prefer the provider tools in normal Hermes Agent cron jobs; use CLI commands only for deeper inspection, import/migration work, or when running outside an agent session.
 
-1. install/attach/load the packaged `local-memory-maintenance` skill from `skills/local-memory-maintenance/SKILL.md`, then schedule a Hermes job with clear repository path, database path, and permission boundaries
+When the plugin shim is installed and enabled, load the package-versioned plugin skill `local_memory:maintenance`. Keep the cron prompt focused on policy: phases/recipe, apply mode, reporting mode, database path, and permission boundaries. `sync-skills` remains available as a compatibility path for older Hermes installations that cannot load plugin-provided skills.
+
+1. load `local_memory:maintenance` or, for compatibility, the copied `local-memory-maintenance` skill, then schedule a Hermes job with clear repository path, database path, and permission boundaries
 2. run `memory_build_peer_review_packet` and, only for deterministic alias decisions, validate/apply with `memory_apply_peer_review_patch`
 3. run `memory_build_reflection_packets` to discover stale sessions and build raw-message review packets
 4. have Hermes Agent review each packet and produce reflection patches with candidate facts and session summaries
