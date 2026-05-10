@@ -341,6 +341,16 @@ class LocalMemoryProvider:
     def is_available(self) -> bool:
         return True
 
+    def shutdown(self) -> None:
+        """Clean shutdown hook for Hermes' memory provider lifecycle.
+
+        The SQLite-backed provider opens short-lived connections per store
+        operation, so there is no persistent handle to close. Keeping this
+        no-op hook avoids noisy shutdown warnings in Hermes versions that call
+        provider.shutdown() unconditionally.
+        """
+        return None
+
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         hermes_home = Path(kwargs.get("hermes_home") or Path.home() / ".hermes")
         self.db_path = self.db_path or hermes_home / "memory" / "local_memory.sqlite"

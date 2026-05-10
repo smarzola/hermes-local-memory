@@ -32,6 +32,7 @@ def test_provider_initializes_profile_scoped_database_and_identity_alias(tmp_pat
     provider = make_provider(tmp_path)
 
     assert provider.is_available()
+    provider.shutdown()
     assert provider.db_path == tmp_path / "memory" / "local_memory.sqlite"
 
     peer = provider.store.resolve_peer("telegram:1001")

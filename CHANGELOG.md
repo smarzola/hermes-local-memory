@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.3.1
+
+### Fixed
+
+- Added a no-op `LocalMemoryProvider.shutdown()` lifecycle hook so Hermes Agent versions that call provider shutdown unconditionally do not emit noisy warnings for the SQLite-backed provider.
+
 ## v0.3.0
 
 ### Changed
