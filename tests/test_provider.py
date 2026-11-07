@@ -32,6 +32,8 @@ def test_provider_initializes_profile_scoped_database_and_identity_alias(tmp_pat
     provider = make_provider(tmp_path)
 
     assert provider.is_available()
+    assert provider.on_session_end([{"role": "user", "content": "hello"}]) is None
+    assert provider.on_session_end() is None
     provider.shutdown()
     assert provider.db_path == tmp_path / "memory" / "local_memory.sqlite"
 

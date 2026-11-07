@@ -351,6 +351,17 @@ class LocalMemoryProvider:
         """
         return None
 
+    def on_session_end(self, messages: list[dict[str, Any]] | None = None) -> None:
+        """Session-end hook for Hermes' memory provider lifecycle.
+
+        Durable facts are written explicitly through the memory tools and
+        transcripts are persisted turn-by-turn by sync_turn(), so there is no
+        pending state to flush here. This no-op mirrors shutdown() and keeps
+        Hermes' unconditional on_session_end() call from logging an
+        AttributeError traceback at every session boundary.
+        """
+        return None
+
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         hermes_home = Path(kwargs.get("hermes_home") or Path.home() / ".hermes")
         self.db_path = self.db_path or hermes_home / "memory" / "local_memory.sqlite"
